@@ -1,0 +1,17 @@
+namespace TrayApp.Models;
+
+internal class BrowserExtensionPayloadDto
+{
+    public int? Id { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public BrowserRegistryDto Registry { get; set; } = new BrowserRegistryDto();
+    public string Rest { get; set; } = string.Empty;
+}
+
+internal class BrowserRegistryDto
+{
+    public string Domain { get; set; } = string.Empty;
+    public string Username { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+}

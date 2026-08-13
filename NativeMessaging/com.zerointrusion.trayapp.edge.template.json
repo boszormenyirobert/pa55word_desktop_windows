@@ -1,0 +1,9 @@
+{
+  "name": "com.zerointrusion.trayapp",
+  "description": "ZeroIntrusion Tray Native Messaging Host",
+  "path": "__TRAYAPP_EXE_PATH__",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://jdkllibgcnaikemfnmahbokkemknbgfl/"
+  ]
+}
