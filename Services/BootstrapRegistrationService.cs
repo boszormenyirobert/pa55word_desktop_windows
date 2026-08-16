@@ -94,6 +94,7 @@ namespace TrayApp.Services
                 type = "namespace",
                 deviceId,
                 publicKey,
+                deviceName = Environment.MachineName,
                 namespaceId,
                 namespaceUrl = normalizedNamespaceUrl,
                 namespaceName = normalizedNamespaceName
