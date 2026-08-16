@@ -108,6 +108,8 @@ namespace TrayApp.Services
         private async Task HandleCreateAsync(BrowserExtensionPayloadDto payload)
         {
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
+            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
+            string activeDeviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
 
             if (dek.Length != 32)
             {
@@ -119,8 +121,8 @@ namespace TrayApp.Services
 
             var connectionPayload = new ConnectionRequestDto
             {
-                AccountId = registration.AccountId,
-                DeviceId = registration.DeviceId,
+                AccountId = accountId,
+                DeviceId = activeDeviceId,
                 Iv = encryptedRegistry.Iv,
                 AuthTag = encryptedRegistry.AuthTag,
                 Registry = encryptedRegistry.Ciphertext,
@@ -128,7 +130,7 @@ namespace TrayApp.Services
             };
 
             IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(
-                registration.DeviceId,
+                activeDeviceId,
                 JsonSerializer.Serialize(connectionPayload),
                 "create request");
 
@@ -138,6 +140,8 @@ namespace TrayApp.Services
         private async Task HandleUpdateAsync(BrowserExtensionPayloadDto payload)
         {
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
+            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
+            string activeDeviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
 
             if (dek.Length != 32)
             {
@@ -150,8 +154,8 @@ namespace TrayApp.Services
             var connectionPayload = new ConnectionRequestDto
             {
                 Id = payload.Id,
-                AccountId = registration.AccountId,
-                DeviceId = registration.DeviceId,
+                AccountId = accountId,
+                DeviceId = activeDeviceId,
                 Iv = encryptedRegistry.Iv,
                 AuthTag = encryptedRegistry.AuthTag,
                 Registry = encryptedRegistry.Ciphertext,
@@ -159,7 +163,7 @@ namespace TrayApp.Services
             };
 
             IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(
-                registration.DeviceId,
+                activeDeviceId,
                 JsonSerializer.Serialize(connectionPayload),
                 "update request");
 
@@ -174,16 +178,18 @@ namespace TrayApp.Services
             }
 
             var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
+            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
+            string activeDeviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
 
             var deletePayload = new
             {
                 id = payload.Id.Value,
-                accountId = registration.AccountId,
-                deviceId = registration.DeviceId
+                accountId,
+                deviceId = activeDeviceId
             };
 
             IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(
-                registration.DeviceId,
+                activeDeviceId,
                 JsonSerializer.Serialize(deletePayload),
                 "delete request");
 
@@ -212,6 +218,8 @@ namespace TrayApp.Services
         private async Task<string> HandleReadAsync()
         {
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
+            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
+            string activeDeviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
 
             if (dek.Length != 32)
             {
@@ -220,12 +228,12 @@ namespace TrayApp.Services
 
             var readPayload = new ConnectionReadRequestDto
             {
-                AccountId = registration.AccountId,
-                DeviceId = registration.DeviceId
+                AccountId = accountId,
+                DeviceId = activeDeviceId
             };
 
             IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(
-                registration.DeviceId,
+                activeDeviceId,
                 JsonSerializer.Serialize(readPayload),
                 "read request");
 

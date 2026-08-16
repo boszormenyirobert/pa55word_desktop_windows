@@ -19,12 +19,6 @@ namespace TrayApp.Services
                 return sourceRootPath;
             }
 
-            string currentDirectoryPath = Path.Combine(Directory.GetCurrentDirectory(), fileName);
-            if (File.Exists(currentDirectoryPath))
-            {
-                return currentDirectoryPath;
-            }
-
             string appBaseDirectoryPath = Path.Combine(AppContext.BaseDirectory, fileName);
             if (File.Exists(appBaseDirectoryPath))
             {
@@ -36,7 +30,7 @@ namespace TrayApp.Services
                 return sourceRootPath;
             }
 
-            return currentDirectoryPath;
+            return appBaseDirectoryPath;
         }
 
         private static string? TryGetSourceRootFilePath(string fileName)

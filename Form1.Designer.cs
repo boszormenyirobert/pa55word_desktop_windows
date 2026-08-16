@@ -34,12 +34,15 @@
             this.contextMenuStrip1 = new ContextMenuStrip(this.components);
             this.loginToolStripMenuItem = new ToolStripMenuItem();
             this.logoutToolStripMenuItem = new ToolStripMenuItem();
+            this.registerServerToolStripMenuItem = new ToolStripMenuItem();
             this.exitToolStripMenuItem = new ToolStripMenuItem();
             this.pictureBoxQr = new PictureBox();
             this.device_registration = new Label();
             this.baseUrlLabel = new Label();
             this.baseUrlTextBox = new TextBox();
             this.continueRegistrationButton = new Button();
+            this.namespaceNameLabel = new Label();
+            this.namespaceNameTextBox = new TextBox();
             this.contextMenuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)this.pictureBoxQr).BeginInit();
             this.SuspendLayout();
@@ -53,9 +56,9 @@
             // 
             // contextMenuStrip1
             // 
-            this.contextMenuStrip1.Items.AddRange(new ToolStripItem[] { this.loginToolStripMenuItem, this.logoutToolStripMenuItem, this.exitToolStripMenuItem });
+            this.contextMenuStrip1.Items.AddRange(new ToolStripItem[] { this.loginToolStripMenuItem, this.logoutToolStripMenuItem, this.registerServerToolStripMenuItem, this.exitToolStripMenuItem });
             this.contextMenuStrip1.Name = "contextMenuStrip1";
-            this.contextMenuStrip1.Size = new Size(181, 92);
+            this.contextMenuStrip1.Size = new Size(181, 114);
             // 
             // loginToolStripMenuItem
             // 
@@ -69,6 +72,13 @@
             this.logoutToolStripMenuItem.Size = new Size(180, 22);
             this.logoutToolStripMenuItem.Text = "logout";
             this.logoutToolStripMenuItem.Click += this.logoutToolStripMenuItem_Click;
+            // 
+            // registerServerToolStripMenuItem
+            // 
+            this.registerServerToolStripMenuItem.Name = "registerServerToolStripMenuItem";
+            this.registerServerToolStripMenuItem.Size = new Size(180, 22);
+            this.registerServerToolStripMenuItem.Text = "register server";
+            this.registerServerToolStripMenuItem.Click += this.registerServerToolStripMenuItem_Click;
             // 
             // exitToolStripMenuItem
             // 
@@ -124,11 +134,31 @@
             this.continueRegistrationButton.Visible = false;
             this.continueRegistrationButton.Click += this.continueRegistrationButton_Click;
             // 
+            // namespaceNameLabel
+            // 
+            this.namespaceNameLabel.AutoSize = true;
+            this.namespaceNameLabel.Location = new Point(231, 229);
+            this.namespaceNameLabel.Name = "namespaceNameLabel";
+            this.namespaceNameLabel.Size = new Size(96, 15);
+            this.namespaceNameLabel.TabIndex = 6;
+            this.namespaceNameLabel.Text = "Namespace name";
+            this.namespaceNameLabel.Visible = false;
+            // 
+            // namespaceNameTextBox
+            // 
+            this.namespaceNameTextBox.Location = new Point(231, 255);
+            this.namespaceNameTextBox.Name = "namespaceNameTextBox";
+            this.namespaceNameTextBox.Size = new Size(329, 23);
+            this.namespaceNameTextBox.TabIndex = 7;
+            this.namespaceNameTextBox.Visible = false;
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new SizeF(7F, 15F);
             this.AutoScaleMode = AutoScaleMode.Font;
             this.ClientSize = new Size(800, 450);
+            this.Controls.Add(this.namespaceNameTextBox);
+            this.Controls.Add(this.namespaceNameLabel);
             this.Controls.Add(this.continueRegistrationButton);
             this.Controls.Add(this.baseUrlTextBox);
             this.Controls.Add(this.baseUrlLabel);
@@ -148,11 +178,14 @@
         private ContextMenuStrip contextMenuStrip1;
         private ToolStripMenuItem loginToolStripMenuItem;
         private ToolStripMenuItem logoutToolStripMenuItem;
+        private ToolStripMenuItem registerServerToolStripMenuItem;
         private ToolStripMenuItem exitToolStripMenuItem;
         private PictureBox pictureBoxQr;
         private Label device_registration;
         private Label baseUrlLabel;
         private TextBox baseUrlTextBox;
         private Button continueRegistrationButton;
+        private Label namespaceNameLabel;
+        private TextBox namespaceNameTextBox;
     }
 }

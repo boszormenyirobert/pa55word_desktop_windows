@@ -23,5 +23,10 @@ namespace TrayApp.Services
         {
             return $"{Namespace}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(deviceId)}";
         }
+
+        public static string ResolveNamespace(string deviceId, string namespaceId)
+        {
+            return $"account/resolve/{Uri.EscapeDataString(deviceId)}/{Uri.EscapeDataString(namespaceId)}";
+        }
     }
 }

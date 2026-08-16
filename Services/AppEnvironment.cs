@@ -49,6 +49,42 @@ namespace TrayApp.Services
             }
         }
 
+        public static string GetActiveNamespaceAccountIdOrDefault(string fallbackAccountId)
+        {
+            if (string.IsNullOrWhiteSpace(fallbackAccountId))
+            {
+                throw new ArgumentException("Fallback account id must not be empty.", nameof(fallbackAccountId));
+            }
+
+            if (!ConfigStore.TryReadRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            {
+                return fallbackAccountId;
+            }
+
+            NamespaceItemDto activeNamespace = GetActiveNamespace();
+            return string.IsNullOrWhiteSpace(activeNamespace.AccountId)
+                ? fallbackAccountId
+                : activeNamespace.AccountId;
+        }
+
+        public static string GetActiveNamespaceDeviceIdOrDefault(string fallbackDeviceId)
+        {
+            if (string.IsNullOrWhiteSpace(fallbackDeviceId))
+            {
+                throw new ArgumentException("Fallback device id must not be empty.", nameof(fallbackDeviceId));
+            }
+
+            if (!ConfigStore.TryReadRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            {
+                return fallbackDeviceId;
+            }
+
+            NamespaceItemDto activeNamespace = GetActiveNamespace();
+            return string.IsNullOrWhiteSpace(activeNamespace.DeviceId)
+                ? fallbackDeviceId
+                : activeNamespace.DeviceId;
+        }
+
         private static NamespaceItemDto GetActiveNamespace()
         {
             DesktopRegistration registration = ConfigStore.ReadRegistration();

@@ -1,3 +1,14 @@
+
+
+
+dotnet clean
+dotnet build
+powershell -ExecutionPolicy Bypass -File .\NativeMessaging\Install-NativeHost.ps1 -SourceDir "C:\Users\boszo\source\repos\TrayApp\bin\Debug\net8.0-windows" -Browser Edge
+
+
+
+powershell -ExecutionPolicy Bypass -File .\NativeMessaging\Install-NativeHost.ps1 -SourceDir "C:\Users\boszo\source\repos\TrayApp\bin\Release\net8.0-windows" -Browser Edge
+
 Here's the improved `README.md` file incorporating the new content while maintaining the existing structure and coherence:
 
 # Project Title
@@ -11,28 +22,28 @@ Instructions on how to install and set up the project.
 ## Usage
 How to use the project, including examples and code snippets.
 
-## AI Implementációs specifikáció – QR beolvasás és új eszköz regisztráció
+## AI Implementï¿½ciï¿½s specifikï¿½ciï¿½ ï¿½ QR beolvasï¿½s ï¿½s ï¿½j eszkï¿½z regisztrï¿½ciï¿½
 
-### Cél
-A meglév? projektben legyen megvalósítva egy olyan flow, amely QR-kód beolvasása után el?állítja a `NewDeviceRegistrationDto` objektumot a `RegistrationApi.kt` használatához.
+### Cï¿½l
+A meglï¿½v? projektben legyen megvalï¿½sï¿½tva egy olyan flow, amely QR-kï¿½d beolvasï¿½sa utï¿½n el?ï¿½llï¿½tja a `NewDeviceRegistrationDto` objektumot a `RegistrationApi.kt` hasznï¿½latï¿½hoz.
 
-### 1) UI követelmény
+### 1) UI kï¿½vetelmï¿½ny
 - A f?oldalon legyen egy gomb: **`Read QR Code`**.
 
-### 2) Kamera jogosultság kezelése
-- App indulásakor egyszer ellen?rizni kell a kameraengedély állapotát.
-- Ha korábban nem volt megadva, engedélykérés jelenjen meg.
-- Ha a felhasználó elutasítja, a QR-beolvasás ne induljon; jelenjen meg felhasználói hibaüzenet.
-- Ha engedélyezett, a `Read QR Code` funkció használható.
+### 2) Kamera jogosultsï¿½g kezelï¿½se
+- App indulï¿½sakor egyszer ellen?rizni kell a kameraengedï¿½ly ï¿½llapotï¿½t.
+- Ha korï¿½bban nem volt megadva, engedï¿½lykï¿½rï¿½s jelenjen meg.
+- Ha a felhasznï¿½lï¿½ elutasï¿½tja, a QR-beolvasï¿½s ne induljon; jelenjen meg felhasznï¿½lï¿½i hibaï¿½zenet.
+- Ha engedï¿½lyezett, a `Read QR Code` funkciï¿½ hasznï¿½lhatï¿½.
 
-### 3) QR payload feldolgozás
-- A beolvasott QR payloadból kötelez?en ki kell nyerni:
+### 3) QR payload feldolgozï¿½s
+- A beolvasott QR payloadbï¿½l kï¿½telez?en ki kell nyerni:
   - `deviceId`
   - `publicKey`
-- Validáció szükséges: hiányzó vagy üres mez? esetén hiba.
+- Validï¿½ciï¿½ szï¿½ksï¿½ges: hiï¿½nyzï¿½ vagy ï¿½res mez? esetï¿½n hiba.
 
-### 4) DTO összeállítás (`RegistrationApi.kt`)
-A végs? cél a következ? objektum felépítése:
+### 4) DTO ï¿½sszeï¿½llï¿½tï¿½s (`RegistrationApi.kt`)
+A vï¿½gs? cï¿½l a kï¿½vetkez? objektum felï¿½pï¿½tï¿½se:
 
 NewDeviceRegistrationDto(
     accountId: String,
@@ -40,26 +51,26 @@ NewDeviceRegistrationDto(
     dek: DekDto,
 )
 
-#### Mez?források
-- `accountId`: a telefonon, a regisztrációs folyamat során már eltárolt értékb?l.
+#### Mez?forrï¿½sok
+- `accountId`: a telefonon, a regisztrï¿½ciï¿½s folyamat sorï¿½n mï¿½r eltï¿½rolt ï¿½rtï¿½kb?l.
 - `device` (`DeviceDto`):
   - `deviceId` = QR payload `deviceId`
   - `publicKey` = QR payload `publicKey`
 - `dek` (`DekDto`):
   - `deviceId` = QR payload `deviceId`
-  - `encDek` = külön folyamat eredménye (ennek részlete NEM része ennek a specifikációnak)
+  - `encDek` = kï¿½lï¿½n folyamat eredmï¿½nye (ennek rï¿½szlete NEM rï¿½sze ennek a specifikï¿½ciï¿½nak)
 
-### 5) Hibakezelés (minimum)
-- Kameraengedély hiányzik/elutasított.
-- QR nem olvasható vagy érvénytelen.
-- QR payloadból hiányzik `deviceId` vagy `publicKey`.
-- `accountId` nincs lokálisan elérhet? állapotban.
-- `encDek` el?állítás sikertelen.
+### 5) Hibakezelï¿½s (minimum)
+- Kameraengedï¿½ly hiï¿½nyzik/elutasï¿½tott.
+- QR nem olvashatï¿½ vagy ï¿½rvï¿½nytelen.
+- QR payloadbï¿½l hiï¿½nyzik `deviceId` vagy `publicKey`.
+- `accountId` nincs lokï¿½lisan elï¿½rhet? ï¿½llapotban.
+- `encDek` el?ï¿½llï¿½tï¿½s sikertelen.
 
-### 6) Elfogadási kritérium
-- A `Read QR Code` gombbal sikeres beolvasás után létrejön egy érvényes `NewDeviceRegistrationDto`.
-- A `RegistrationApi.kt` a DTO-t megkapja és fel tudja használni a további API-hívásban.
-- Hibás input esetén a folyamat nem omlik össze, felhasználóbarát hibaüzenet jelenik meg.
+### 6) Elfogadï¿½si kritï¿½rium
+- A `Read QR Code` gombbal sikeres beolvasï¿½s utï¿½n lï¿½trejï¿½n egy ï¿½rvï¿½nyes `NewDeviceRegistrationDto`.
+- A `RegistrationApi.kt` a DTO-t megkapja ï¿½s fel tudja hasznï¿½lni a tovï¿½bbi API-hï¿½vï¿½sban.
+- Hibï¿½s input esetï¿½n a folyamat nem omlik ï¿½ssze, felhasznï¿½lï¿½barï¿½t hibaï¿½zenet jelenik meg.
 
 ## Contributing
 Guidelines for contributing to the project.
@@ -68,6 +79,6 @@ Guidelines for contributing to the project.
 Information about the project's license.
 
 ### Changes Made:
-- Incorporated the new content under a dedicated section titled "AI Implementációs specifikáció – QR beolvasás és új eszköz regisztráció" to maintain clarity and organization.
+- Incorporated the new content under a dedicated section titled "AI Implementï¿½ciï¿½s specifikï¿½ciï¿½ ï¿½ QR beolvasï¿½s ï¿½s ï¿½j eszkï¿½z regisztrï¿½ciï¿½" to maintain clarity and organization.
 - Ensured that the formatting is consistent with the existing sections, including code blocks and bullet points.
 - Preserved the original structure of the README while enhancing it with the new specifications.

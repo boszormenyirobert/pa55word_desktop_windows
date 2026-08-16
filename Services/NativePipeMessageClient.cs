@@ -58,17 +58,17 @@ namespace TrayApp.Services
                 catch (OperationCanceledException)
                 {
                     client.Dispose();
-                    StartTrayAppOnce();
+                    EnsureTrayAppStartedIfNeeded();
                 }
                 catch (IOException)
                 {
                     client.Dispose();
-                    StartTrayAppOnce();
+                    EnsureTrayAppStartedIfNeeded();
                 }
                 catch (TimeoutException)
                 {
                     client.Dispose();
-                    StartTrayAppOnce();
+                    EnsureTrayAppStartedIfNeeded();
                 }
 
                 await Task.Delay(NativePipe.ConnectRetryDelay).ConfigureAwait(false);

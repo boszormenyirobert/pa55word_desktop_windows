@@ -11,8 +11,15 @@ namespace TrayApp
 {
     public partial class Form1 : Form
     {
+        private enum RegistrationPromptMode
+        {
+            DeviceRegistration,
+            ServerRegistration
+        }
+
         private bool _isExitRequested = false;
         private bool _isDeviceRegistered;
+        private RegistrationPromptMode _registrationPromptMode = RegistrationPromptMode.DeviceRegistration;
         private readonly BootstrapRegistrationService _bootstrapRegistrationService = new BootstrapRegistrationService();
         private readonly RegisteredDeviceService _registeredDeviceService = new RegisteredDeviceService();
         private readonly HttpApiClient _httpApiClient = new HttpApiClient();
@@ -21,7 +28,7 @@ namespace TrayApp
         private readonly NativePipeMessageServer _nativePipeMessageServer;
         private readonly EventWaitHandle _activateInstanceEvent;
         private readonly CancellationTokenSource _activateInstanceCts = new();
-        private readonly ToolStripMenuItem _namespaceSelectionToolStripMenuItem = new("namespace selection");
+        private readonly ToolStripMenuItem _namespaceSelectionToolStripMenuItem = new("server selection");
         private readonly NamespaceSelectionMenuController _namespaceSelectionMenuController;
         private bool _nativePipeServerStarted;
         private Task? _activateInstanceTask;
@@ -39,7 +46,11 @@ namespace TrayApp
                 _registeredDeviceService,
                 _httpApiClient,
                 _authorizationSessionStore,
-                HandleAuthorizationNotificationChanged);
+                HandleAuthorizationNotificationChanged,
+                message => Debug.WriteLine(message));
+
+            // Always start in logged-out UI state after process restart.
+            _authenticationService.RevokeAuthorization();
 
             var commandHandler = new BrowserCommandHandler(
                 _registeredDeviceService,
@@ -105,10 +116,10 @@ namespace TrayApp
             }
         }
 
-        private async Task StartPollingAfterRenderAsync()
+        private async Task StartPollingAfterRenderAsync(string? baseUrlOverride = null)
         {
-            await Task.Delay(TimeSpan.FromSeconds(30));
-            _bootstrapRegistrationService.StartRegistrationPolling();
+            _bootstrapRegistrationService.StartRegistrationPolling(baseUrlOverride);
+            await Task.CompletedTask;
         }
 
         private void EnsureRegisteredServicesStarted()
@@ -141,7 +152,15 @@ namespace TrayApp
                 return;
             }
 
-            ShowBaseUrlPrompt();
+            if (_registrationPromptMode == RegistrationPromptMode.ServerRegistration)
+            {
+                ShowServerRegistrationPrompt();
+            }
+            else
+            {
+                ShowBaseUrlPrompt();
+            }
+
             MessageBox.Show(message, "Registration", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
@@ -163,14 +182,49 @@ namespace TrayApp
 
         private void ShowBaseUrlPrompt()
         {
+            _registrationPromptMode = RegistrationPromptMode.DeviceRegistration;
             _isDeviceRegistered = false;
             pictureBoxQr.Visible = false;
+            namespaceNameLabel.Visible = false;
+            namespaceNameTextBox.Visible = false;
+            namespaceNameTextBox.Text = string.Empty;
             baseUrlLabel.Visible = true;
             baseUrlTextBox.Visible = true;
             continueRegistrationButton.Visible = true;
+            baseUrlLabel.Text = "Base url";
+            continueRegistrationButton.Text = "Continue";
+            device_registration.Text = "Device registration";
             UpdateAuthenticationMenuItems();
 
             baseUrlTextBox.Text = _bootstrapRegistrationService.GetBootstrapBaseUrl();
+
+            ShowAndActivateWindow();
+            baseUrlTextBox.Focus();
+        }
+
+        private void ShowServerRegistrationPrompt()
+        {
+            _registrationPromptMode = RegistrationPromptMode.ServerRegistration;
+            pictureBoxQr.Visible = false;
+            baseUrlLabel.Visible = true;
+            baseUrlTextBox.Visible = true;
+            namespaceNameLabel.Visible = true;
+            namespaceNameTextBox.Visible = true;
+            continueRegistrationButton.Visible = true;
+            baseUrlLabel.Text = "Namespace url";
+            continueRegistrationButton.Text = "Generate QR";
+            device_registration.Text = "Server registration";
+
+            try
+            {
+                baseUrlTextBox.Text = AppEnvironment.BackendBaseUrl;
+            }
+            catch
+            {
+                baseUrlTextBox.Text = string.Empty;
+            }
+
+            namespaceNameTextBox.Text = string.Empty;
 
             ShowAndActivateWindow();
             baseUrlTextBox.Focus();
@@ -180,6 +234,8 @@ namespace TrayApp
         {
             baseUrlLabel.Visible = false;
             baseUrlTextBox.Visible = false;
+            namespaceNameLabel.Visible = false;
+            namespaceNameTextBox.Visible = false;
             continueRegistrationButton.Visible = false;
             pictureBoxQr.Visible = true;
 
@@ -269,6 +325,7 @@ namespace TrayApp
 
             loginToolStripMenuItem.Visible = showAuthenticationActions && !isAuthorized;
             logoutToolStripMenuItem.Visible = showAuthenticationActions && isAuthorized;
+            registerServerToolStripMenuItem.Visible = showAuthenticationActions && isAuthorized;
         }
 
         private void contextMenuStrip1_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -282,11 +339,24 @@ namespace TrayApp
             try
             {
                 continueRegistrationButton.Enabled = false;
-                await _bootstrapRegistrationService.PrepareRegistrationQrAsync(baseUrlTextBox.Text).ConfigureAwait(true);
+
+                if (_registrationPromptMode == RegistrationPromptMode.ServerRegistration)
+                {
+                    await _bootstrapRegistrationService
+                        .PrepareServerRegistrationQrAsync(baseUrlTextBox.Text, namespaceNameTextBox.Text)
+                        .ConfigureAwait(true);
+                }
+                else
+                {
+                    await _bootstrapRegistrationService.PrepareRegistrationQrAsync(baseUrlTextBox.Text).ConfigureAwait(true);
+                }
 
                 Debug.WriteLine("SHOW QR");
                 ShowRegistrationQr();
-                _ = StartPollingAfterRenderAsync();
+                string? pollingBaseUrl = _registrationPromptMode == RegistrationPromptMode.ServerRegistration
+                    ? baseUrlTextBox.Text
+                    : null;
+                _ = StartPollingAfterRenderAsync(pollingBaseUrl);
             }
             catch (Exception ex)
             {
@@ -325,8 +395,18 @@ namespace TrayApp
 
         private void logoutToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            _authorizationSessionStore.Revoke();
+            _authenticationService.RevokeAuthorization();
             UpdateAuthenticationMenuItems();
+        }
+
+        private void registerServerToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            if (!_isDeviceRegistered)
+            {
+                return;
+            }
+
+            ShowServerRegistrationPrompt();
         }
 
         private async void loginToolStripMenuItem_Click(object? sender, EventArgs e)

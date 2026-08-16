@@ -34,10 +34,15 @@ namespace TrayApp.Services
                 new MediaTypeWithQualityHeaderValue("text/event-stream"));
             AddHeaders(request, headers);
 
+            Debug.WriteLine($"[SSE] Sending GET request to '{endpoint}'.");
+
             using var response = await _httpClient.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken).ConfigureAwait(false);
+
+            Debug.WriteLine(
+                $"[SSE] Response headers received from '{endpoint}'. Status={(int)response.StatusCode} ({response.StatusCode}).");
 
             if (!response.IsSuccessStatusCode)
             {
@@ -50,6 +55,8 @@ namespace TrayApp.Services
 
             using var stream = await response.Content.ReadAsStreamAsync(
                 cancellationToken).ConfigureAwait(false);
+
+            Debug.WriteLine($"[SSE] Response stream opened for '{endpoint}'.");
 
             using var reader = new StreamReader(stream, Encoding.UTF8);
 
@@ -156,8 +163,13 @@ namespace TrayApp.Services
             using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
             AddHeaders(request, headers);
 
+            Debug.WriteLine($"[HTTP-GET] Sending GET request to '{endpoint}'.");
+
             using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
             string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+            Debug.WriteLine(
+                $"[HTTP-GET] Response received from '{endpoint}'. Status={(int)response.StatusCode} ({response.StatusCode}). Body: {responseBody}");
 
             if (!response.IsSuccessStatusCode)
             {
