@@ -10,6 +10,7 @@ namespace TrayApp.Services
     {
         private readonly RegistrationConfigStore _configStore = new();
         private CancellationTokenSource _registrationCts = new();
+        private PendingRootRegistrationContext? _pendingRootRegistration;
         private PendingRegistrationContext? _pendingServerRegistration;
 
         public event Action? RegistrationCompleted;
@@ -17,7 +18,8 @@ namespace TrayApp.Services
 
         public Task<bool> LoadOrCreateConfig()
         {
-            if (_configStore.TryReadRegistration(out _))
+            if (_configStore.TryReadRegistrations(out List<DesktopRegistration>? registrations) &&
+                registrations is { Count: > 0 })
             {
                 return Task.FromResult(true);
             }
@@ -46,20 +48,33 @@ namespace TrayApp.Services
 
         public string GetBootstrapBaseUrl()
         {
-            return _configStore.LoadBootstrapConfig().BaseUrl;
+            return _pendingRootRegistration?.BaseUrl ?? _configStore.LoadBootstrapConfig().BaseUrl;
         }
 
-        public async Task PrepareRegistrationQrAsync(string baseUrl)
+        public async Task PrepareRegistrationQrAsync(string baseUrl, string userName)
         {
             _pendingServerRegistration = null;
+            _pendingRootRegistration = null;
 
-            ConfigModel bootstrapConfig = _configStore.LoadBootstrapConfig();
-            bootstrapConfig.BaseUrl = NormalizeBaseUrl(baseUrl);
+            ConfigModel bootstrapConfig = new()
+            {
+                BaseUrl = NormalizeBaseUrl(baseUrl)
+            };
+
+            string normalizedUserName = NormalizeUserName(userName);
+
             await PrepareBootstrapConfigAndQrAsync(bootstrapConfig).ConfigureAwait(false);
+
+            _pendingRootRegistration = new PendingRootRegistrationContext(
+                Guid.NewGuid().ToString("D"),
+                normalizedUserName,
+                bootstrapConfig.BaseUrl,
+                bootstrapConfig.DeviceId);
         }
 
         public async Task PrepareServerRegistrationQrAsync(string namespaceUrl, string namespaceName)
         {
+            DesktopRegistration activeRegistration = _configStore.ReadRegistration(AppEnvironment.GetActiveUserId());
             var pki = new Pki();
             string deviceId = GenerateId();
             string keyContainer = "KeyContainer_" + deviceId;
@@ -76,11 +91,12 @@ namespace TrayApp.Services
             Debug.WriteLine($"[NS-ADD] Namespace keypair ready. keyContainer='{keyContainer}', publicKeyLength={publicKey.Length}.");
 
             _pendingServerRegistration = new PendingRegistrationContext(
+                activeRegistration.UserKey,
                 deviceId,
                 namespaceId,
                 normalizedNamespaceUrl);
 
-            _configStore.UpsertNamespace(new NamespaceItemDto
+            _configStore.UpsertNamespace(activeRegistration.UserKey, new NamespaceItemDto
             {
                 DeviceId = deviceId,
                 DeviceName = Environment.MachineName,
@@ -137,6 +153,9 @@ namespace TrayApp.Services
             PendingRegistrationContext? pendingRegistration = !string.IsNullOrWhiteSpace(baseUrlOverride)
                 ? _pendingServerRegistration
                 : null;
+            PendingRootRegistrationContext? pendingRootRegistration = string.IsNullOrWhiteSpace(baseUrlOverride)
+                ? _pendingRootRegistration
+                : null;
             int attempt = 0;
             CancellationToken registrationToken = registrationCts.Token;
 
@@ -147,6 +166,11 @@ namespace TrayApp.Services
                 deviceId = pendingRegistration.DeviceId;
                 Debug.WriteLine(
                     $"[REG] Namespace registration polling prepared. deviceId='{pendingRegistration.DeviceId}', namespaceId='{pendingRegistration.NamespaceId}', namespaceUrl='{pendingRegistration.NamespaceUrl}'.");
+            }
+            else if (pendingRootRegistration != null)
+            {
+                deviceId = pendingRootRegistration.DeviceId;
+                Debug.WriteLine($"[REG] Root registration polling prepared from pending context. deviceId='{deviceId}'.");
             }
             else
             {
@@ -165,7 +189,7 @@ namespace TrayApp.Services
                 deviceId,
                 registrationPayload,
                 "registration polling request");
-            string endpoint = BuildRegistrationApiUrl(deviceId, baseUrlOverride);
+            string endpoint = BuildRegistrationApiUrl(deviceId, pendingRootRegistration?.BaseUrl ?? baseUrlOverride);
 
             if (pendingRegistration != null)
             {
@@ -249,16 +273,24 @@ namespace TrayApp.Services
                     string resolvedAccountId = await ResolveNamespaceAccountIdAsync(pendingRegistration).ConfigureAwait(false);
                     Debug.WriteLine(
                         $"[REG] Namespace resolve succeeded. namespaceId='{pendingRegistration.NamespaceId}', accountId='{resolvedAccountId}'.");
-                    _configStore.UpdateNamespaceAccountId(pendingRegistration.NamespaceId, resolvedAccountId);
+                    _configStore.UpdateNamespaceAccountId(pendingRegistration.UserId, pendingRegistration.NamespaceId, resolvedAccountId);
                     Debug.WriteLine(
                         $"[REG] Preserving existing root registration after namespace add. SSE registration for deviceId='{registration.DeviceId}' will not overwrite config root fields.");
                 }
 
+                _pendingRootRegistration = null;
                 _pendingServerRegistration = null;
 
                 if (pendingRegistration == null)
                 {
+                    if (pendingRootRegistration != null)
+                    {
+                        registration.UserId = pendingRootRegistration.UserId;
+                        registration.UserName = pendingRootRegistration.UserName;
+                    }
+
                     _configStore.SaveRegistration(registration);
+                    AppEnvironment.SetActiveUser(registration.UserKey);
                 }
 
                 RegistrationCompleted?.Invoke();
@@ -341,6 +373,16 @@ namespace TrayApp.Services
             return namespaceName.Trim();
         }
 
+        private static string NormalizeUserName(string userName)
+        {
+            if (string.IsNullOrWhiteSpace(userName))
+            {
+                throw new InvalidOperationException("User name must not be empty.");
+            }
+
+            return userName.Trim();
+        }
+
         private static bool IsRetryableRegistrationFailure(HttpRequestException exception)
         {
             return exception.Message.Contains("Device not found for signature verification", StringComparison.OrdinalIgnoreCase) ||
@@ -378,8 +420,15 @@ namespace TrayApp.Services
         }
 
         private sealed record PendingRegistrationContext(
+            string UserId,
             string DeviceId,
             string NamespaceId,
             string NamespaceUrl);
+
+        private sealed record PendingRootRegistrationContext(
+            string UserId,
+            string UserName,
+            string BaseUrl,
+            string DeviceId);
     }
 }

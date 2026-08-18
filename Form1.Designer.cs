@@ -125,7 +125,7 @@
             // 
             // continueRegistrationButton
             // 
-            this.continueRegistrationButton.Location = new Point(231, 229);
+            this.continueRegistrationButton.Location = new Point(231, 294);
             this.continueRegistrationButton.Name = "continueRegistrationButton";
             this.continueRegistrationButton.Size = new Size(329, 32);
             this.continueRegistrationButton.TabIndex = 5;

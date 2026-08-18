@@ -28,7 +28,10 @@ namespace TrayApp
         private readonly NativePipeMessageServer _nativePipeMessageServer;
         private readonly EventWaitHandle _activateInstanceEvent;
         private readonly CancellationTokenSource _activateInstanceCts = new();
+        private readonly ToolStripMenuItem _userSelectionToolStripMenuItem = new("user selection");
         private readonly ToolStripMenuItem _namespaceSelectionToolStripMenuItem = new("server selection");
+        private readonly ToolStripMenuItem _newUserToolStripMenuItem = new("new user");
+        private readonly UserSelectionMenuController _userSelectionMenuController;
         private readonly NamespaceSelectionMenuController _namespaceSelectionMenuController;
         private bool _nativePipeServerStarted;
         private Task? _activateInstanceTask;
@@ -72,9 +75,19 @@ namespace TrayApp
                 _registeredDeviceService,
                 _namespaceSelectionToolStripMenuItem);
 
+            _userSelectionMenuController = new UserSelectionMenuController(
+                _registeredDeviceService,
+                _userSelectionToolStripMenuItem,
+                () => _namespaceSelectionMenuController.RefreshMenu());
+
+            _userSelectionToolStripMenuItem.Visible = false;
             loginToolStripMenuItem.Click += loginToolStripMenuItem_Click;
             _namespaceSelectionToolStripMenuItem.Visible = false;
+            _newUserToolStripMenuItem.Visible = false;
+            _newUserToolStripMenuItem.Click += newUserToolStripMenuItem_Click;
             contextMenuStrip1.Items.Insert(0, _namespaceSelectionToolStripMenuItem);
+            contextMenuStrip1.Items.Insert(0, _userSelectionToolStripMenuItem);
+            contextMenuStrip1.Items.Insert(3, _newUserToolStripMenuItem);
             contextMenuStrip1.Opening += contextMenuStrip1_Opening;
             UpdateAuthenticationMenuItems();
 
@@ -182,21 +195,35 @@ namespace TrayApp
 
         private void ShowBaseUrlPrompt()
         {
+            bool hasRegisteredUsers = _registeredDeviceService.TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? registrations) &&
+                registrations != null &&
+                registrations.Count > 0;
+
             _registrationPromptMode = RegistrationPromptMode.DeviceRegistration;
             _isDeviceRegistered = false;
             pictureBoxQr.Visible = false;
-            namespaceNameLabel.Visible = false;
-            namespaceNameTextBox.Visible = false;
+            namespaceNameLabel.Visible = true;
+            namespaceNameTextBox.Visible = true;
             namespaceNameTextBox.Text = string.Empty;
             baseUrlLabel.Visible = true;
             baseUrlTextBox.Visible = true;
             continueRegistrationButton.Visible = true;
             baseUrlLabel.Text = "Base url";
+            namespaceNameLabel.Text = "User name";
             continueRegistrationButton.Text = "Continue";
             device_registration.Text = "Device registration";
             UpdateAuthenticationMenuItems();
 
-            baseUrlTextBox.Text = _bootstrapRegistrationService.GetBootstrapBaseUrl();
+            try
+            {
+                baseUrlTextBox.Text = hasRegisteredUsers
+                    ? AppEnvironment.BackendBaseUrl
+                    : _bootstrapRegistrationService.GetBootstrapBaseUrl();
+            }
+            catch
+            {
+                baseUrlTextBox.Text = _bootstrapRegistrationService.GetBootstrapBaseUrl();
+            }
 
             ShowAndActivateWindow();
             baseUrlTextBox.Focus();
@@ -212,6 +239,7 @@ namespace TrayApp
             namespaceNameTextBox.Visible = true;
             continueRegistrationButton.Visible = true;
             baseUrlLabel.Text = "Namespace url";
+            namespaceNameLabel.Text = "Namespace name";
             continueRegistrationButton.Text = "Generate QR";
             device_registration.Text = "Server registration";
 
@@ -326,11 +354,13 @@ namespace TrayApp
             loginToolStripMenuItem.Visible = showAuthenticationActions && !isAuthorized;
             logoutToolStripMenuItem.Visible = showAuthenticationActions && isAuthorized;
             registerServerToolStripMenuItem.Visible = showAuthenticationActions && isAuthorized;
+            _newUserToolStripMenuItem.Visible = showAuthenticationActions;
         }
 
         private void contextMenuStrip1_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
         {
             UpdateAuthenticationMenuItems();
+            _userSelectionMenuController.RefreshMenu();
             _namespaceSelectionMenuController.RefreshMenu();
         }
 
@@ -348,7 +378,9 @@ namespace TrayApp
                 }
                 else
                 {
-                    await _bootstrapRegistrationService.PrepareRegistrationQrAsync(baseUrlTextBox.Text).ConfigureAwait(true);
+                    await _bootstrapRegistrationService
+                        .PrepareRegistrationQrAsync(baseUrlTextBox.Text, namespaceNameTextBox.Text)
+                        .ConfigureAwait(true);
                 }
 
                 Debug.WriteLine("SHOW QR");
@@ -407,6 +439,11 @@ namespace TrayApp
             }
 
             ShowServerRegistrationPrompt();
+        }
+
+        private void newUserToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            ShowBaseUrlPrompt();
         }
 
         private async void loginToolStripMenuItem_Click(object? sender, EventArgs e)

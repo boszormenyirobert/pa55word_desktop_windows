@@ -1,0 +1,30 @@
+[
+  {
+    "userId":"",
+    "useName":"",  
+    "id": 2,
+    "accountId": "360a84ab-b3a1-4520-9524-928d7011dd19",
+    "deviceId": "2ZVN3291mI",
+    "encDek": "l\u002BExxt5LOM5MtJ9Ai2xey\u002BJINt3p/Gmi/qRYqt2xCqtw3qQnrG/5pp/T10\u002BG9uJi7ERxiiHkRcdqu1QwqYcuq8QgIeVc6qPS/W3mlJCEYpja40wYIBjZNMW2S5/jgNonuue\u002BMU01\u002B56SZGHuH8kiPpFfdxeVWH/iw/vSPhEPEDyvP7tlDvi0v\u002Be81JYa7QtsqRJcL6reATrvB1imskTEvRZUXHpeAa87ot0KIlku1tCheFGfnEnoFEy0apdRNPAkQ2RWRwWvt/aJIjgwFg4uP51ztyUb4FeDIEivE\u002B7oekVND/5mILgwUq1y9p6omyLzY2W46bRvhejB3yk30sU8uw==",
+    "namespaces": [
+      {
+        "id": 1,
+        "deviceId": "2ZVN3291mI",
+        "deviceName": "",
+        "accountId": "360a84ab-b3a1-4520-9524-928d7011dd19",
+        "namespaceId": "64917a01df",
+        "namespace": "start",
+        "url": "http://192.168.178.20:3000"
+      },
+      {
+        "id": 0,
+        "deviceId": "G8WQJ8sMo4",
+        "deviceName": "DESKTOP-D7MHHE8",
+        "accountId": "45df9ba6-4a05-43e8-993a-a63b6d2ea813",
+        "namespaceId": "e06798dafb",
+        "namespace": "dev",
+        "url": "http://192.168.178.20:3001"
+      }
+    ]
+  }
+]

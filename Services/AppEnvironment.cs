@@ -7,6 +7,7 @@ namespace TrayApp.Services
         private const string ConfigFileName = "config.json";
         private static readonly object SelectionLock = new();
         private static readonly RegistrationConfigStore ConfigStore = new();
+        private static string? _activeUserId;
         private static string? _activeNamespaceId;
 
         public static string BackendBaseUrl => ResolveBackendBaseUrl();
@@ -26,6 +27,35 @@ namespace TrayApp.Services
             }
         }
 
+        public static string? GetActiveUserId()
+        {
+            lock (SelectionLock)
+            {
+                return _activeUserId;
+            }
+        }
+
+        public static void SetActiveUser(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                throw new ArgumentException("User id must not be empty.", nameof(userId));
+            }
+
+            DesktopRegistration registration = GetRegistration(userId);
+
+            lock (SelectionLock)
+            {
+                _activeUserId = registration.UserKey;
+
+                NamespaceItemDto? selectedNamespace = registration.Namespaces.FirstOrDefault(namespaceItem =>
+                    string.Equals(namespaceItem.NamespaceId, _activeNamespaceId, StringComparison.Ordinal));
+
+                _activeNamespaceId = selectedNamespace?.NamespaceId
+                    ?? registration.Namespaces.FirstOrDefault()?.NamespaceId;
+            }
+        }
+
         public static void SetActiveNamespace(string namespaceId)
         {
             if (string.IsNullOrWhiteSpace(namespaceId))
@@ -33,7 +63,7 @@ namespace TrayApp.Services
                 throw new ArgumentException("Namespace id must not be empty.", nameof(namespaceId));
             }
 
-            DesktopRegistration registration = ConfigStore.ReadRegistration();
+            DesktopRegistration registration = GetActiveRegistration();
             NamespaceItemDto selectedNamespace = registration.Namespaces.FirstOrDefault(
                 item => string.Equals(item.NamespaceId, namespaceId, StringComparison.Ordinal))
                 ?? throw new InvalidOperationException($"Namespace '{namespaceId}' was not found in config.json.");
@@ -56,7 +86,7 @@ namespace TrayApp.Services
                 throw new ArgumentException("Fallback account id must not be empty.", nameof(fallbackAccountId));
             }
 
-            if (!ConfigStore.TryReadRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
             {
                 return fallbackAccountId;
             }
@@ -74,7 +104,7 @@ namespace TrayApp.Services
                 throw new ArgumentException("Fallback device id must not be empty.", nameof(fallbackDeviceId));
             }
 
-            if (!ConfigStore.TryReadRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
             {
                 return fallbackDeviceId;
             }
@@ -87,7 +117,7 @@ namespace TrayApp.Services
 
         private static NamespaceItemDto GetActiveNamespace()
         {
-            DesktopRegistration registration = ConfigStore.ReadRegistration();
+            DesktopRegistration registration = GetActiveRegistration();
 
             if (registration.Namespaces.Count == 0)
             {
@@ -118,7 +148,7 @@ namespace TrayApp.Services
 
         private static string ResolveBackendBaseUrl()
         {
-            if (ConfigStore.TryReadRegistration(out DesktopRegistration? registration) && registration is { Namespaces.Count: > 0 })
+            if (TryReadActiveRegistration(out DesktopRegistration? registration) && registration is { Namespaces.Count: > 0 })
             {
                 return GetActiveNamespace().Url.TrimEnd('/');
             }
@@ -132,6 +162,48 @@ namespace TrayApp.Services
             }
 
             return bootstrapBaseUrl.TrimEnd('/');
+        }
+
+        private static bool TryReadActiveRegistration(out DesktopRegistration? registration)
+        {
+            return ConfigStore.TryReadRegistration(GetActiveUserId(), out registration);
+        }
+
+        private static DesktopRegistration GetActiveRegistration()
+        {
+            IReadOnlyList<DesktopRegistration> registrations = ConfigStore.ReadRegistrations();
+
+            lock (SelectionLock)
+            {
+                DesktopRegistration registration = registrations.FirstOrDefault(candidate =>
+                        string.Equals(candidate.UserKey, _activeUserId, StringComparison.Ordinal))
+                    ?? registrations[0];
+
+                _activeUserId = registration.UserKey;
+
+                if (registration.Namespaces.Count > 0)
+                {
+                    NamespaceItemDto? selectedNamespace = registration.Namespaces.FirstOrDefault(namespaceItem =>
+                        string.Equals(namespaceItem.NamespaceId, _activeNamespaceId, StringComparison.Ordinal));
+
+                    _activeNamespaceId = selectedNamespace?.NamespaceId ?? registration.Namespaces[0].NamespaceId;
+                }
+                else
+                {
+                    _activeNamespaceId = null;
+                }
+
+                return registration;
+            }
+        }
+
+        private static DesktopRegistration GetRegistration(string userId)
+        {
+            IReadOnlyList<DesktopRegistration> registrations = ConfigStore.ReadRegistrations();
+
+            return registrations.FirstOrDefault(registration =>
+                    string.Equals(registration.UserKey, userId, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"User '{userId}' was not found in config.json.");
         }
     }
 }

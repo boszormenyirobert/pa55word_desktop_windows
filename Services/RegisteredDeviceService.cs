@@ -6,14 +6,32 @@ namespace TrayApp.Services
     {
         private readonly RegistrationConfigStore _configStore = new();
 
+        public bool TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? registrations)
+        {
+            registrations = null;
+
+            if (!_configStore.TryReadRegistrations(out List<DesktopRegistration>? parsedRegistrations))
+            {
+                return false;
+            }
+
+            registrations = parsedRegistrations;
+            return true;
+        }
+
+        public IReadOnlyList<DesktopRegistration> ReadRegistrations()
+        {
+            return _configStore.ReadRegistrations();
+        }
+
         public bool TryReadRegistration(out DesktopRegistration? registration)
         {
-            return _configStore.TryReadRegistration(out registration);
+            return _configStore.TryReadRegistration(AppEnvironment.GetActiveUserId(), out registration);
         }
 
         public DesktopRegistration ReadRegistration()
         {
-            return _configStore.ReadRegistration();
+            return _configStore.ReadRegistration(AppEnvironment.GetActiveUserId());
         }
 
         public (DesktopRegistration Registration, byte[] DecryptedDek) ReadRegistrationAndDecryptDek()
@@ -34,7 +52,7 @@ namespace TrayApp.Services
             string deviceId,
             IReadOnlyCollection<NamespaceItemDto> namespaces)
         {
-            _configStore.SaveNamespaces(accountId, deviceId, namespaces);
+            _configStore.SaveNamespaces(AppEnvironment.GetActiveUserId() ?? string.Empty, accountId, deviceId, namespaces);
         }
     }
 }
