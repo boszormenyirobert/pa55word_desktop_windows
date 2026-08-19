@@ -10,19 +10,28 @@ namespace TrayApp
         private readonly RegisteredDeviceService _registeredDeviceService;
         private readonly ToolStripMenuItem _userSelectionMenuItem;
         private readonly Action _refreshNamespaceMenu;
+        private readonly Func<bool> _isAuthorized;
 
         public UserSelectionMenuController(
             RegisteredDeviceService registeredDeviceService,
             ToolStripMenuItem userSelectionMenuItem,
-            Action refreshNamespaceMenu)
+            Action refreshNamespaceMenu,
+            Func<bool> isAuthorized)
         {
             _registeredDeviceService = registeredDeviceService;
             _userSelectionMenuItem = userSelectionMenuItem;
             _refreshNamespaceMenu = refreshNamespaceMenu;
+            _isAuthorized = isAuthorized;
         }
 
         public void RefreshMenu()
         {
+            if (_isAuthorized())
+            {
+                ClearMenu();
+                return;
+            }
+
             if (!_registeredDeviceService.TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? registrations) ||
                 registrations == null ||
                 registrations.Count == 0)

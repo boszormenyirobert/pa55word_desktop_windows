@@ -19,6 +19,21 @@ namespace TrayApp.Services
             return $"{AuthenticationStatus}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(deviceId)}/{Uri.EscapeDataString(notificationId)}";
         }
 
+        public static string AuthenticationStatusNotification(string accountId, string deviceId, string notificationId, string nonce)
+        {
+            return $"{AuthenticationStatusNotification(accountId, deviceId, notificationId)}?nonce={Uri.EscapeDataString(nonce)}";
+        }
+
+        public static string AuthenticationState(string accountId, string deviceId, string nonce)
+        {
+            return $"{Authentication}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(deviceId)}?nonce={Uri.EscapeDataString(nonce)}";
+        }
+
+        public static string AuthenticationRevoke(string accountId, string deviceId, string nonce)
+        {
+            return AuthenticationState(accountId, deviceId, nonce);
+        }
+
         public static string NamespacesForDevice(string accountId, string deviceId)
         {
             return $"{Namespace}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(deviceId)}";

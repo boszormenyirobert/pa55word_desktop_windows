@@ -8,6 +8,7 @@ namespace TrayApp.Services
 {
     internal sealed class BrowserCommandHandler : INativeMessageProcessor
     {
+        private const string TrayDeviceName = "ZeroIntrusion Tray";
         private static string ConnectionEndpoint => AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStore);
         private static string ConnectionReadEndpoint => AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreAll);
         
@@ -54,10 +55,16 @@ namespace TrayApp.Services
 
             try
             {
-                bool authorized = await _authenticationService.EnsureAuthorizedAsync().ConfigureAwait(false);
+                bool authorized = await _authenticationService.EnsureAuthorizedAsync(allowInteractiveLogin: false).ConfigureAwait(false);
                 if (!authorized)
                 {
-                    return CreateErrorResponseJson("authorization_declined", "User authorization was declined or not confirmed.");
+                    return CreateErrorResponseJson("authorization_declined", "No active desktop attestation. Log in again from the tray app.");
+                }
+
+                bool hasValidCredential = await _authenticationService.HasValidCredentialForActiveNamespaceAsync().ConfigureAwait(false);
+                if (!hasValidCredential)
+                {
+                    return CreateErrorResponseJson("authorization_declined", "The selected namespace does not have an active backend credential for this user.");
                 }
 
                 if (string.Equals(payload.Rest, MessagingAction.Read, StringComparison.OrdinalIgnoreCase))
@@ -85,6 +92,12 @@ namespace TrayApp.Services
 
                 return CreateErrorResponseJson("unsupported_operation", $"Unsupported rest operation: {payload.Rest}");
             }
+            catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                _authenticationService.RevokeAuthorization();
+                _log?.Invoke($"[EXT->APP] Credential-store request lost attestation: {ex.Message}");
+                return CreateErrorResponseJson("authorization_expired", "Desktop attestation expired or was revoked. Log in again from the tray app.");
+            }
             catch (Exception ex)
             {
                 _log?.Invoke($"[EXT->APP] Processing error: {ex.Message}");
@@ -109,7 +122,7 @@ namespace TrayApp.Services
         {
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
             string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string activeDeviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
+            string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
 
             if (dek.Length != 32)
             {
@@ -122,16 +135,20 @@ namespace TrayApp.Services
             var connectionPayload = new ConnectionRequestDto
             {
                 AccountId = accountId,
-                DeviceId = activeDeviceId,
+                DeviceId = deviceId,
+                DeviceName = TrayDeviceName,
                 Iv = encryptedRegistry.Iv,
                 AuthTag = encryptedRegistry.AuthTag,
                 Registry = encryptedRegistry.Ciphertext,
-                Label = payload.Label
+                Label = payload.Label,
+                Nonce = NonceGenerator.Create()
             };
 
+            string payloadJson = JsonSerializer.Serialize(connectionPayload);
+
             IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(
-                activeDeviceId,
-                JsonSerializer.Serialize(connectionPayload),
+                deviceId,
+                payloadJson,
                 "create request");
 
             await _httpApiClient.PostJsonAsync(ConnectionEndpoint, connectionPayload, headers).ConfigureAwait(false);
@@ -141,7 +158,7 @@ namespace TrayApp.Services
         {
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
             string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string activeDeviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
+            string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
 
             if (dek.Length != 32)
             {
@@ -155,16 +172,20 @@ namespace TrayApp.Services
             {
                 Id = payload.Id,
                 AccountId = accountId,
-                DeviceId = activeDeviceId,
+                DeviceId = deviceId,
+                DeviceName = TrayDeviceName,
                 Iv = encryptedRegistry.Iv,
                 AuthTag = encryptedRegistry.AuthTag,
                 Registry = encryptedRegistry.Ciphertext,
-                Label = payload.Label
+                Label = payload.Label,
+                Nonce = NonceGenerator.Create()
             };
 
+            string payloadJson = JsonSerializer.Serialize(connectionPayload);
+
             IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(
-                activeDeviceId,
-                JsonSerializer.Serialize(connectionPayload),
+                deviceId,
+                payloadJson,
                 "update request");
 
             await _httpApiClient.PutJsonAsync(ConnectionEndpoint, connectionPayload, headers).ConfigureAwait(false);
@@ -179,18 +200,22 @@ namespace TrayApp.Services
 
             var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
             string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string activeDeviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
+            string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
 
             var deletePayload = new
             {
                 id = payload.Id.Value,
                 accountId,
-                deviceId = activeDeviceId
+                deviceId,
+                deviceName = TrayDeviceName,
+                nonce = NonceGenerator.Create()
             };
 
+            string payloadJson = JsonSerializer.Serialize(deletePayload);
+
             IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(
-                activeDeviceId,
-                JsonSerializer.Serialize(deletePayload),
+                deviceId,
+                payloadJson,
                 "delete request");
 
             await _httpApiClient.DeleteJsonAsync(ConnectionEndpoint, deletePayload, headers).ConfigureAwait(false);
@@ -219,7 +244,7 @@ namespace TrayApp.Services
         {
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
             string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string activeDeviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
+            string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
 
             if (dek.Length != 32)
             {
@@ -229,12 +254,16 @@ namespace TrayApp.Services
             var readPayload = new ConnectionReadRequestDto
             {
                 AccountId = accountId,
-                DeviceId = activeDeviceId
+                DeviceId = deviceId,
+                DeviceName = TrayDeviceName,
+                Nonce = NonceGenerator.Create()
             };
 
+            string payloadJson = JsonSerializer.Serialize(readPayload);
+
             IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(
-                activeDeviceId,
-                JsonSerializer.Serialize(readPayload),
+                deviceId,
+                payloadJson,
                 "read request");
 
             List<ConnectionReadItemDto>? items = await _httpApiClient

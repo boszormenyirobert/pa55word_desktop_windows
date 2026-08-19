@@ -13,6 +13,9 @@ namespace TrayApp.Models
         [JsonPropertyName("deviceId")]
         public string DeviceId { get; set; } = string.Empty;
 
+        [JsonPropertyName("deviceName")]
+        public string DeviceName { get; set; } = string.Empty;
+
         [JsonPropertyName("iv")]
         public string Iv { get; set; } = string.Empty;
 
@@ -24,5 +27,8 @@ namespace TrayApp.Models
 
         [JsonPropertyName("label")]
         public string Label { get; set; } = string.Empty;
+
+        [JsonPropertyName("nonce")]
+        public string Nonce { get; set; } = string.Empty;
     }
 }

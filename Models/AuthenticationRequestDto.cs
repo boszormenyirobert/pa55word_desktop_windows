@@ -9,5 +9,8 @@ namespace TrayApp.Models
 
         [JsonPropertyName("deviceId")]
         public string DeviceId { get; set; } = string.Empty;
+
+        [JsonPropertyName("nonce")]
+        public string Nonce { get; set; } = string.Empty;
     }
 }

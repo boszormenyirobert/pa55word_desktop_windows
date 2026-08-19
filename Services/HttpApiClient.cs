@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Diagnostics;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 
@@ -34,23 +35,25 @@ namespace TrayApp.Services
                 new MediaTypeWithQualityHeaderValue("text/event-stream"));
             AddHeaders(request, headers);
 
-            Debug.WriteLine($"[SSE] Sending GET request to '{endpoint}'.");
+            LogRequest(request, payloadJson: null, "[SSE]");
 
             using var response = await _httpClient.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken).ConfigureAwait(false);
 
-            Debug.WriteLine(
-                $"[SSE] Response headers received from '{endpoint}'. Status={(int)response.StatusCode} ({response.StatusCode}).");
+            LogResponse(response, endpoint, responseBody: null, "[SSE]");
 
             if (!response.IsSuccessStatusCode)
             {
                 string responseBody = await response.Content.ReadAsStringAsync(cancellationToken)
                     .ConfigureAwait(false);
 
-                throw new HttpRequestException(
-                    $"GET {endpoint} failed with {(int)response.StatusCode} ({response.StatusCode}). Body: {responseBody}");
+                throw new ApiRequestException(
+                    HttpMethod.Get,
+                    endpoint,
+                    response.StatusCode,
+                    responseBody);
             }
 
             using var stream = await response.Content.ReadAsStreamAsync(
@@ -83,13 +86,18 @@ namespace TrayApp.Services
         {
             string json = JsonSerializer.Serialize(payload);
             using var request = CreateJsonPostRequest(endpoint, json, headers);
+            LogRequest(request, json, "[HTTP-POST]");
             using var response = await _httpClient.SendAsync(request);
             string responseBody = await response.Content.ReadAsStringAsync();
+            LogResponse(response, endpoint, responseBody, "[HTTP-POST]");
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new HttpRequestException(
-                    $"POST {endpoint} failed with {(int)response.StatusCode} ({response.StatusCode}). Body: {responseBody}");
+                throw new ApiRequestException(
+                    HttpMethod.Post,
+                    endpoint,
+                    response.StatusCode,
+                    responseBody);
             }
         }
 
@@ -100,13 +108,18 @@ namespace TrayApp.Services
         {
             string json = JsonSerializer.Serialize(payload);
             using var request = CreateJsonPutRequest(endpoint, json, headers);
+            LogRequest(request, json, "[HTTP-PUT]");
             using var response = await _httpClient.SendAsync(request);
             string responseBody = await response.Content.ReadAsStringAsync();
+            LogResponse(response, endpoint, responseBody, "[HTTP-PUT]");
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new HttpRequestException(
-                    $"PUT {endpoint} failed with {(int)response.StatusCode} ({response.StatusCode}). Body: {responseBody}");
+                throw new ApiRequestException(
+                    HttpMethod.Put,
+                    endpoint,
+                    response.StatusCode,
+                    responseBody);
             }
         }
 
@@ -117,14 +130,53 @@ namespace TrayApp.Services
         {
             string json = JsonSerializer.Serialize(payload);
             using var request = DeleteJsonRequest(endpoint, json, headers);
+            LogRequest(request, json, "[HTTP-DELETE]");
             using var response = await _httpClient.SendAsync(request);
             string responseBody = await response.Content.ReadAsStringAsync();
+            LogResponse(response, endpoint, responseBody, "[HTTP-DELETE]");
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new HttpRequestException(
-                    $"DELETE {endpoint} failed with {(int)response.StatusCode} ({response.StatusCode}). Body: {responseBody}");
+                throw new ApiRequestException(
+                    HttpMethod.Delete,
+                    endpoint,
+                    response.StatusCode,
+                    responseBody);
             }
+        }
+
+        public async Task<TResponse?> DeleteJsonAsync<TRequest, TResponse>(
+            string endpoint,
+            TRequest payload,
+            IReadOnlyDictionary<string, string>? headers = null)
+        {
+            string json = JsonSerializer.Serialize(payload);
+            using var request = DeleteJsonRequest(endpoint, json, headers);
+            LogRequest(request, json, "[HTTP-DELETE]");
+            using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+            string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            LogResponse(response, endpoint, responseBody, "[HTTP-DELETE]");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new ApiRequestException(
+                    HttpMethod.Delete,
+                    endpoint,
+                    response.StatusCode,
+                    responseBody);
+            }
+
+            if (string.IsNullOrWhiteSpace(responseBody))
+            {
+                return default;
+            }
+
+            return JsonSerializer.Deserialize<TResponse>(
+                responseBody,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
         }
 
         public async Task<TResponse?> PostJsonAsync<TRequest, TResponse>(
@@ -134,13 +186,18 @@ namespace TrayApp.Services
         {
             string json = JsonSerializer.Serialize(payload);
             using var request = CreateJsonPostRequest(endpoint, json, headers);
+            LogRequest(request, json, "[HTTP-POST]");
             using var response = await _httpClient.SendAsync(request);
             string responseBody = await response.Content.ReadAsStringAsync();
+            LogResponse(response, endpoint, responseBody, "[HTTP-POST]");
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new HttpRequestException(
-                    $"POST {endpoint} failed with {(int)response.StatusCode} ({response.StatusCode}). Body: {responseBody}");
+                throw new ApiRequestException(
+                    HttpMethod.Post,
+                    endpoint,
+                    response.StatusCode,
+                    responseBody);
             }
 
             if (string.IsNullOrWhiteSpace(responseBody))
@@ -163,18 +220,20 @@ namespace TrayApp.Services
             using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
             AddHeaders(request, headers);
 
-            Debug.WriteLine($"[HTTP-GET] Sending GET request to '{endpoint}'.");
+            LogRequest(request, payloadJson: null, "[HTTP-GET]");
 
             using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
             string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-            Debug.WriteLine(
-                $"[HTTP-GET] Response received from '{endpoint}'. Status={(int)response.StatusCode} ({response.StatusCode}). Body: {responseBody}");
+            LogResponse(response, endpoint, responseBody, "[HTTP-GET]");
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new HttpRequestException(
-                    $"GET {endpoint} failed with {(int)response.StatusCode} ({response.StatusCode}). Body: {responseBody}");
+                throw new ApiRequestException(
+                    HttpMethod.Get,
+                    endpoint,
+                    response.StatusCode,
+                    responseBody);
             }
 
             if (string.IsNullOrWhiteSpace(responseBody))
@@ -251,6 +310,48 @@ namespace TrayApp.Services
                     throw new InvalidOperationException($"Failed to add request header '{header.Key}'.");
                 }
             }
+        }
+
+        private static void LogRequest(HttpRequestMessage request, string? payloadJson, string prefix)
+        {
+            Debug.WriteLine($"{prefix} Request: {request.Method} {request.RequestUri}");
+            Debug.WriteLine($"{prefix} Request headers: {FormatHeaders(request)}");
+
+            if (!string.IsNullOrWhiteSpace(payloadJson))
+            {
+                Debug.WriteLine($"{prefix} Request payload: {payloadJson}");
+            }
+        }
+
+        private static void LogResponse(HttpResponseMessage response, string endpoint, string? responseBody, string prefix)
+        {
+            Debug.WriteLine(
+                $"{prefix} Response: {endpoint} Status={(int)response.StatusCode} ({response.StatusCode}) Headers: {FormatHeaders(response)}");
+
+            if (responseBody != null)
+            {
+                Debug.WriteLine($"{prefix} Response body: {responseBody}");
+            }
+        }
+
+        private static string FormatHeaders(HttpRequestMessage request)
+        {
+            IEnumerable<string> requestHeaders = request.Headers.Select(header =>
+                $"{header.Key}={string.Join(",", header.Value)}");
+            IEnumerable<string> contentHeaders = request.Content?.Headers.Select(header =>
+                $"{header.Key}={string.Join(",", header.Value)}") ?? Enumerable.Empty<string>();
+
+            return string.Join("; ", requestHeaders.Concat(contentHeaders));
+        }
+
+        private static string FormatHeaders(HttpResponseMessage response)
+        {
+            IEnumerable<string> responseHeaders = response.Headers.Select(header =>
+                $"{header.Key}={string.Join(",", header.Value)}");
+            IEnumerable<string> contentHeaders = response.Content.Headers.Select(header =>
+                $"{header.Key}={string.Join(",", header.Value)}");
+
+            return string.Join("; ", responseHeaders.Concat(contentHeaders));
         }
     }
 }

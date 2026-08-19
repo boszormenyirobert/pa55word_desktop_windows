@@ -34,6 +34,7 @@ namespace TrayApp
         private readonly UserSelectionMenuController _userSelectionMenuController;
         private readonly NamespaceSelectionMenuController _namespaceSelectionMenuController;
         private bool _nativePipeServerStarted;
+        private bool _authenticationInProgress;
         private Task? _activateInstanceTask;
 
         public Form1()
@@ -52,9 +53,6 @@ namespace TrayApp
                 HandleAuthorizationNotificationChanged,
                 message => Debug.WriteLine(message));
 
-            // Always start in logged-out UI state after process restart.
-            _authenticationService.RevokeAuthorization();
-
             var commandHandler = new BrowserCommandHandler(
                 _registeredDeviceService,
                 _httpApiClient,
@@ -69,7 +67,6 @@ namespace TrayApp
 
             notifyIcon1.Visible = true;
             notifyIcon1.Text = "ZeroIntrusion Agent";
-            ShowStartupNotification();
 
             _namespaceSelectionMenuController = new NamespaceSelectionMenuController(
                 _registeredDeviceService,
@@ -78,7 +75,8 @@ namespace TrayApp
             _userSelectionMenuController = new UserSelectionMenuController(
                 _registeredDeviceService,
                 _userSelectionToolStripMenuItem,
-                () => _namespaceSelectionMenuController.RefreshMenu());
+                () => _namespaceSelectionMenuController.RefreshMenu(),
+                () => _authenticationService.IsAuthorized);
 
             _userSelectionToolStripMenuItem.Visible = false;
             loginToolStripMenuItem.Click += loginToolStripMenuItem_Click;
@@ -95,15 +93,6 @@ namespace TrayApp
             _bootstrapRegistrationService.RegistrationFailed += OnRegistrationFailed;
 
             BootstrapRegistration();
-        }
-
-        private void ShowStartupNotification()
-        {
-            notifyIcon1.ShowBalloonTip(
-                100,
-                "ZeroIntrusion",
-                "Application started and is running in the tray.",
-                ToolTipIcon.Info);
         }
 
         private async void BootstrapRegistration()
@@ -326,35 +315,43 @@ namespace TrayApp
             Activate();
         }
 
-        private void HandleAuthorizationNotificationChanged(string? message)
+        private void HandleAuthorizationNotificationChanged(string? message, ToolTipIcon icon)
         {
             if (InvokeRequired)
             {
-                BeginInvoke(new Action<string?>(HandleAuthorizationNotificationChanged), message);
+                BeginInvoke(new Action<string?, ToolTipIcon>(HandleAuthorizationNotificationChanged), message, icon);
                 return;
             }
+
+            UpdateAuthenticationMenuItems();
 
             if (string.IsNullOrWhiteSpace(message))
             {
                 return;
             }
 
-            notifyIcon1.ShowBalloonTip(
-                3000,
-                "ZeroIntrusion",
-                message,
-                ToolTipIcon.Info);
+            notifyIcon1.BalloonTipTitle = "ZeroIntrusion";
+            notifyIcon1.BalloonTipText = message;
+            notifyIcon1.BalloonTipIcon = icon;
+            notifyIcon1.Visible = true;
+            notifyIcon1.ShowBalloonTip(5000);
         }
 
         private void UpdateAuthenticationMenuItems()
         {
             bool showAuthenticationActions = _isDeviceRegistered;
-            bool isAuthorized = _authorizationSessionStore.IsAuthorized;
+            bool isAuthorized = _authenticationService.IsAuthorized;
+            bool canLogin = showAuthenticationActions && !isAuthorized;
+            bool canLogout = showAuthenticationActions && isAuthorized;
 
-            loginToolStripMenuItem.Visible = showAuthenticationActions && !isAuthorized;
-            logoutToolStripMenuItem.Visible = showAuthenticationActions && isAuthorized;
-            registerServerToolStripMenuItem.Visible = showAuthenticationActions && isAuthorized;
+            loginToolStripMenuItem.Visible = canLogin;
+            loginToolStripMenuItem.Enabled = canLogin && !_authenticationInProgress;
+            logoutToolStripMenuItem.Visible = canLogout;
+            logoutToolStripMenuItem.Enabled = canLogout && !_authenticationInProgress;
+            registerServerToolStripMenuItem.Visible = canLogout;
+            registerServerToolStripMenuItem.Enabled = canLogout && !_authenticationInProgress;
             _newUserToolStripMenuItem.Visible = showAuthenticationActions;
+            _newUserToolStripMenuItem.Enabled = showAuthenticationActions && !_authenticationInProgress;
         }
 
         private void contextMenuStrip1_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -410,6 +407,15 @@ namespace TrayApp
                 return;
             }
 
+            try
+            {
+                _authenticationService.LogoutAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[AUTH] Graceful shutdown revoke failed: {ex.Message}");
+            }
+
             notifyIcon1.Visible = false;
             _activateInstanceCts.Cancel();
             _activateInstanceEvent.Dispose();
@@ -425,10 +431,23 @@ namespace TrayApp
             Close();
         }
 
-        private void logoutToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void logoutToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            _authenticationService.RevokeAuthorization();
-            UpdateAuthenticationMenuItems();
+            try
+            {
+                _authenticationInProgress = true;
+                UpdateAuthenticationMenuItems();
+                await _authenticationService.LogoutAsync().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Logout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                _authenticationInProgress = false;
+                UpdateAuthenticationMenuItems();
+            }
         }
 
         private void registerServerToolStripMenuItem_Click(object? sender, EventArgs e)
@@ -450,16 +469,16 @@ namespace TrayApp
         {
             try
             {
-                loginToolStripMenuItem.Enabled = false;
+                _authenticationInProgress = true;
+                UpdateAuthenticationMenuItems();
 
-                bool authorized = await _authenticationService.EnsureAuthorizedAsync().ConfigureAwait(true);
+                bool authorized = await _authenticationService.EnsureAuthorizedAsync(allowInteractiveLogin: true).ConfigureAwait(true);
                 if (!authorized)
                 {
-                    MessageBox.Show(
-                        "Login was declined or did not complete.",
-                        "Login",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
+                    _authenticationService.RevokeAuthorization();
+                    _authenticationInProgress = false;
+                    UpdateAuthenticationMenuItems();
+                    return;
                 }
             }
             catch (Exception ex)
@@ -468,7 +487,7 @@ namespace TrayApp
             }
             finally
             {
-                loginToolStripMenuItem.Enabled = true;
+                _authenticationInProgress = false;
                 UpdateAuthenticationMenuItems();
             }
         }

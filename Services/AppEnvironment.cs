@@ -19,6 +19,17 @@ namespace TrayApp.Services
             return $"{BackendBaseUrl}{ApiRoutes.VersionPrefix}/{normalizedApiRoute}";
         }
 
+        public static string BuildApiUrl(string baseUrl, string apiRoute)
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                throw new ArgumentException("Base url must not be empty.", nameof(baseUrl));
+            }
+
+            string normalizedApiRoute = apiRoute.TrimStart('/');
+            return $"{baseUrl.TrimEnd('/')}{ApiRoutes.VersionPrefix}/{normalizedApiRoute}";
+        }
+
         public static string? GetActiveNamespaceId()
         {
             lock (SelectionLock)
@@ -97,6 +108,24 @@ namespace TrayApp.Services
                 : activeNamespace.AccountId;
         }
 
+        public static string GetPrimaryNamespaceAccountIdOrDefault(string fallbackAccountId)
+        {
+            if (string.IsNullOrWhiteSpace(fallbackAccountId))
+            {
+                throw new ArgumentException("Fallback account id must not be empty.", nameof(fallbackAccountId));
+            }
+
+            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            {
+                return fallbackAccountId;
+            }
+
+            NamespaceItemDto primaryNamespace = registration.Namespaces[0];
+            return string.IsNullOrWhiteSpace(primaryNamespace.AccountId)
+                ? fallbackAccountId
+                : primaryNamespace.AccountId;
+        }
+
         public static string GetActiveNamespaceDeviceIdOrDefault(string fallbackDeviceId)
         {
             if (string.IsNullOrWhiteSpace(fallbackDeviceId))
@@ -113,6 +142,60 @@ namespace TrayApp.Services
             return string.IsNullOrWhiteSpace(activeNamespace.DeviceId)
                 ? fallbackDeviceId
                 : activeNamespace.DeviceId;
+        }
+
+        public static string GetPrimaryNamespaceDeviceIdOrDefault(string fallbackDeviceId)
+        {
+            if (string.IsNullOrWhiteSpace(fallbackDeviceId))
+            {
+                throw new ArgumentException("Fallback device id must not be empty.", nameof(fallbackDeviceId));
+            }
+
+            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            {
+                return fallbackDeviceId;
+            }
+
+            NamespaceItemDto primaryNamespace = registration.Namespaces[0];
+            return string.IsNullOrWhiteSpace(primaryNamespace.DeviceId)
+                ? fallbackDeviceId
+                : primaryNamespace.DeviceId;
+        }
+
+        public static string GetActiveNamespaceUrlOrDefault(string fallbackBaseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(fallbackBaseUrl))
+            {
+                throw new ArgumentException("Fallback base url must not be empty.", nameof(fallbackBaseUrl));
+            }
+
+            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            {
+                return fallbackBaseUrl;
+            }
+
+            NamespaceItemDto activeNamespace = GetActiveNamespace();
+            return string.IsNullOrWhiteSpace(activeNamespace.Url)
+                ? fallbackBaseUrl
+                : activeNamespace.Url.TrimEnd('/');
+        }
+
+        public static string GetPrimaryNamespaceUrlOrDefault(string fallbackBaseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(fallbackBaseUrl))
+            {
+                throw new ArgumentException("Fallback base url must not be empty.", nameof(fallbackBaseUrl));
+            }
+
+            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            {
+                return fallbackBaseUrl;
+            }
+
+            NamespaceItemDto primaryNamespace = registration.Namespaces[0];
+            return string.IsNullOrWhiteSpace(primaryNamespace.Url)
+                ? fallbackBaseUrl
+                : primaryNamespace.Url.TrimEnd('/');
         }
 
         private static NamespaceItemDto GetActiveNamespace()
