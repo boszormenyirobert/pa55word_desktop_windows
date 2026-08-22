@@ -13,6 +13,9 @@ namespace TrayApp.Models
         [JsonPropertyName("deviceId")]
         public string DeviceId { get; set; } = string.Empty;
 
+        [JsonPropertyName("credentialGroupId")]
+        public int? CredentialGroupId { get; set; }
+
         [JsonPropertyName("iv")]
         public string Iv { get; set; } = string.Empty;
 
@@ -24,5 +27,8 @@ namespace TrayApp.Models
 
         [JsonPropertyName("registry")]
         public string Registry { get; set; } = string.Empty;
+
+        [JsonPropertyName("group")]
+        public CredentialGroupReferenceDto? Group { get; set; }
     }
 }

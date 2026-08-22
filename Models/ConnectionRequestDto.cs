@@ -28,6 +28,10 @@ namespace TrayApp.Models
         [JsonPropertyName("label")]
         public string Label { get; set; } = string.Empty;
 
+        [JsonPropertyName("groupId")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? GroupId { get; set; }
+
         [JsonPropertyName("nonce")]
         public string Nonce { get; set; } = string.Empty;
     }

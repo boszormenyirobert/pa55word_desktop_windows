@@ -45,3 +45,13 @@ Run:
 ## Installer integration
 
 Call `Install-NativeHost.ps1` (preferred) or `Register-EdgeNativeHost.ps1` at install/upgrade time.
+
+## Browser extension message contract
+
+The native message request/response contract used by the browser extension is documented in [BROWSER_EXTENSION_MESSAGE_CONTRACT.md](BROWSER_EXTENSION_MESSAGE_CONTRACT.md).
+
+## Auth invalidation plans
+
+The TrayApp-side implementation plan is documented in [TRAYAPP_AUTH_INVALIDATION_PLAN.md](TRAYAPP_AUTH_INVALIDATION_PLAN.md).
+
+The Angular extension-side implementation plan is documented in [ANGULAR_EXTENSION_AUTH_INVALIDATION_PLAN.md](ANGULAR_EXTENSION_AUTH_INVALIDATION_PLAN.md).

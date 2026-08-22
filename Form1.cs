@@ -24,7 +24,9 @@ namespace TrayApp
         private readonly RegisteredDeviceService _registeredDeviceService = new RegisteredDeviceService();
         private readonly HttpApiClient _httpApiClient = new HttpApiClient();
         private readonly AuthorizationSessionStore _authorizationSessionStore = new AuthorizationSessionStore();
+        private readonly ExtensionSessionStateStore _extensionSessionStateStore = new ExtensionSessionStateStore();
         private readonly AuthenticationService _authenticationService;
+        private readonly AuthStateMonitorService _authStateMonitorService;
         private readonly NativePipeMessageServer _nativePipeMessageServer;
         private readonly EventWaitHandle _activateInstanceEvent;
         private readonly CancellationTokenSource _activateInstanceCts = new();
@@ -53,10 +55,16 @@ namespace TrayApp
                 HandleAuthorizationNotificationChanged,
                 message => Debug.WriteLine(message));
 
+            _authStateMonitorService = new AuthStateMonitorService(
+                _authenticationService,
+                _extensionSessionStateStore,
+                message => Debug.WriteLine(message));
+
             var commandHandler = new BrowserCommandHandler(
                 _registeredDeviceService,
                 _httpApiClient,
                 _authenticationService,
+                _extensionSessionStateStore,
                 message => Debug.WriteLine(message));
 
             _nativePipeMessageServer = new NativePipeMessageServer(
@@ -132,6 +140,7 @@ namespace TrayApp
             }
 
             _nativePipeMessageServer.Start();
+            _authStateMonitorService.Start();
             _nativePipeServerStarted = true;
         }
 
@@ -421,6 +430,7 @@ namespace TrayApp
             _activateInstanceEvent.Dispose();
             _activateInstanceCts.Dispose();
             _nativePipeMessageServer.Dispose();
+            _authStateMonitorService.Dispose();
             base.OnFormClosing(e);
         }
 
@@ -446,6 +456,7 @@ namespace TrayApp
             finally
             {
                 _authenticationInProgress = false;
+                _extensionSessionStateStore.MarkInvalid("authorization_revoked");
                 UpdateAuthenticationMenuItems();
             }
         }
@@ -476,10 +487,13 @@ namespace TrayApp
                 if (!authorized)
                 {
                     _authenticationService.RevokeAuthorization();
+                    _extensionSessionStateStore.MarkInvalid("authorization_declined");
                     _authenticationInProgress = false;
                     UpdateAuthenticationMenuItems();
                     return;
                 }
+
+                _extensionSessionStateStore.MarkAuthorized();
             }
             catch (Exception ex)
             {

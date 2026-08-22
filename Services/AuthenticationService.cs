@@ -127,6 +127,41 @@ namespace TrayApp.Services
             }
         }
 
+        public async Task<AuthorizationHealthResult> CheckAuthorizationStateAsync()
+        {
+            AuthorizationContext loginContext = CreateAuthorizationContext();
+            AuthorizationContext activeNamespaceContext = CreateActiveNamespaceAuthorizationContext();
+
+            if (!_authorizationSessionStore.Matches(loginContext.UserId, loginContext.AccountId, loginContext.DeviceId))
+            {
+                return AuthorizationHealthResult.Invalid("authorization_missing");
+            }
+
+            AuthorizationHealthResult loginHealth = await CheckAuthorizationContextHealthAsync(
+                loginContext,
+                persistSession: true,
+                inactiveReason: "authorization_revoked").ConfigureAwait(false);
+
+            if (!loginHealth.Authorized)
+            {
+                return loginHealth;
+            }
+
+            if (ContextsMatch(loginContext, activeNamespaceContext))
+            {
+                return AuthorizationHealthResult.Active();
+            }
+
+            AuthorizationHealthResult activeNamespaceHealth = await CheckAuthorizationContextHealthAsync(
+                activeNamespaceContext,
+                persistSession: false,
+                inactiveReason: "active_namespace_credential_missing").ConfigureAwait(false);
+
+            return activeNamespaceHealth.Authorized
+                ? AuthorizationHealthResult.Active()
+                : activeNamespaceHealth;
+        }
+
         public void RevokeAuthorization()
         {
             _authorizationSessionStore.Revoke();
@@ -394,6 +429,68 @@ namespace TrayApp.Services
                 _log?.Invoke($"[AUTH] Active attestation check failed with {(int)ex.StatusCode}. Treating session as inactive.");
                 NotifyAuthorizationStatus("Desktop attestation is no longer active. Log in again.", ToolTipIcon.Warning);
                 return false;
+            }
+        }
+
+        private async Task<AuthorizationHealthResult> CheckAuthorizationContextHealthAsync(
+            AuthorizationContext context,
+            bool persistSession,
+            string inactiveReason)
+        {
+            string nonce = NonceGenerator.Create();
+            var payload = new AuthenticationRequestDto
+            {
+                AccountId = context.AccountId,
+                DeviceId = context.DeviceId,
+                Nonce = nonce
+            };
+
+            string payloadJson = JsonSerializer.Serialize(payload);
+            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
+                context.DeviceId,
+                payloadJson,
+                "authentication state request");
+
+            string endpoint = AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AuthenticationState(context.AccountId, context.DeviceId, nonce));
+
+            try
+            {
+                AuthenticationStateResponseDto? response = await _httpApiClient
+                    .GetJsonAsync<AuthenticationStateResponseDto>(endpoint, headers)
+                    .ConfigureAwait(false);
+
+                if (response?.Active != true)
+                {
+                    return AuthorizationHealthResult.Invalid(inactiveReason);
+                }
+
+                AuthenticationAttestationDto? attestation = response.Attestation;
+                if (persistSession)
+                {
+                    string boundAccountId = string.IsNullOrWhiteSpace(attestation?.AccountId)
+                        ? context.AccountId
+                        : attestation.AccountId!;
+                    string boundDesktopId = string.IsNullOrWhiteSpace(attestation?.DesktopId)
+                        ? context.DeviceId
+                        : attestation.DesktopId!;
+
+                    _authorizationSessionStore.SaveActive(
+                        context.UserId,
+                        boundAccountId,
+                        boundDesktopId,
+                        attestation?.ExpiresAt,
+                        attestation?.AttestationId);
+                }
+
+                return AuthorizationHealthResult.Active();
+            }
+            catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden || ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return AuthorizationHealthResult.Invalid(inactiveReason);
+            }
+            catch (Exception ex)
+            {
+                return AuthorizationHealthResult.Transient(ex.Message);
             }
         }
 

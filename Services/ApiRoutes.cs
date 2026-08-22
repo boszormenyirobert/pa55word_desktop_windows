@@ -8,6 +8,8 @@ namespace TrayApp.Services
         public const string Namespace = "namespace";
         public const string CredentialStore = "credential-store";
         public const string CredentialStoreAll = "credential-store/all";
+        public const string CredentialStoreGroup = "credential-store/group";
+        public const string CredentialStoreGroupAll = "credential-store/group/all";
 
         public static string RootDevice(string deviceId)
         {

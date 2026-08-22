@@ -56,34 +56,38 @@
             // 
             // contextMenuStrip1
             // 
+            this.contextMenuStrip1.AutoSize = false;
+            this.contextMenuStrip1.BackColor = Color.LightSkyBlue;
+            this.contextMenuStrip1.Font = new Font("Segoe UI", 10F);
             this.contextMenuStrip1.Items.AddRange(new ToolStripItem[] { this.loginToolStripMenuItem, this.logoutToolStripMenuItem, this.registerServerToolStripMenuItem, this.exitToolStripMenuItem });
             this.contextMenuStrip1.Name = "contextMenuStrip1";
-            this.contextMenuStrip1.Size = new Size(181, 114);
+            this.contextMenuStrip1.RenderMode = ToolStripRenderMode.System;
+            this.contextMenuStrip1.Size = new Size(500, 300);
             // 
             // loginToolStripMenuItem
             // 
             this.loginToolStripMenuItem.Name = "loginToolStripMenuItem";
-            this.loginToolStripMenuItem.Size = new Size(180, 22);
+            this.loginToolStripMenuItem.Size = new Size(180, 24);
             this.loginToolStripMenuItem.Text = "login";
             // 
             // logoutToolStripMenuItem
             // 
             this.logoutToolStripMenuItem.Name = "logoutToolStripMenuItem";
-            this.logoutToolStripMenuItem.Size = new Size(180, 22);
+            this.logoutToolStripMenuItem.Size = new Size(180, 24);
             this.logoutToolStripMenuItem.Text = "logout";
             this.logoutToolStripMenuItem.Click += this.logoutToolStripMenuItem_Click;
             // 
             // registerServerToolStripMenuItem
             // 
             this.registerServerToolStripMenuItem.Name = "registerServerToolStripMenuItem";
-            this.registerServerToolStripMenuItem.Size = new Size(180, 22);
+            this.registerServerToolStripMenuItem.Size = new Size(180, 24);
             this.registerServerToolStripMenuItem.Text = "register server";
             this.registerServerToolStripMenuItem.Click += this.registerServerToolStripMenuItem_Click;
             // 
             // exitToolStripMenuItem
             // 
             this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
-            this.exitToolStripMenuItem.Size = new Size(180, 22);
+            this.exitToolStripMenuItem.Size = new Size(180, 24);
             this.exitToolStripMenuItem.Text = "exit";
             this.exitToolStripMenuItem.Click += this.exitToolStripMenuItem_Click;
             // 
@@ -110,7 +114,7 @@
             this.baseUrlLabel.AutoSize = true;
             this.baseUrlLabel.Location = new Point(231, 164);
             this.baseUrlLabel.Name = "baseUrlLabel";
-            this.baseUrlLabel.Size = new Size(52, 15);
+            this.baseUrlLabel.Size = new Size(48, 15);
             this.baseUrlLabel.TabIndex = 3;
             this.baseUrlLabel.Text = "Base url";
             this.baseUrlLabel.Visible = false;
@@ -139,7 +143,7 @@
             this.namespaceNameLabel.AutoSize = true;
             this.namespaceNameLabel.Location = new Point(231, 229);
             this.namespaceNameLabel.Name = "namespaceNameLabel";
-            this.namespaceNameLabel.Size = new Size(96, 15);
+            this.namespaceNameLabel.Size = new Size(102, 15);
             this.namespaceNameLabel.TabIndex = 6;
             this.namespaceNameLabel.Text = "Namespace name";
             this.namespaceNameLabel.Visible = false;

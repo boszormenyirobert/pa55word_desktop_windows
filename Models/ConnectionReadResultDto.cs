@@ -10,7 +10,13 @@ namespace TrayApp.Models
         [JsonPropertyName("label")]
         public string Label { get; set; } = string.Empty;
 
+        [JsonPropertyName("credentialGroupId")]
+        public int? CredentialGroupId { get; set; }
+
         [JsonPropertyName("registry")]
         public string Registry { get; set; } = string.Empty;
+
+        [JsonPropertyName("group")]
+        public CredentialGroupReferenceDto? Group { get; set; }
     }
 }

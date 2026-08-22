@@ -11,10 +11,13 @@ namespace TrayApp.Services
         private const string TrayDeviceName = "ZeroIntrusion Tray";
         private static string ConnectionEndpoint => AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStore);
         private static string ConnectionReadEndpoint => AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreAll);
+        private static string GroupEndpoint => AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreGroup);
+        private static string GroupReadEndpoint => AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreGroupAll);
         
         private readonly RegisteredDeviceService _registeredDeviceService;
         private readonly HttpApiClient _httpApiClient;
         private readonly AuthenticationService _authenticationService;
+        private readonly ExtensionSessionStateStore _extensionSessionStateStore;
 
         private readonly Action<string>? _log;        
 
@@ -22,11 +25,13 @@ namespace TrayApp.Services
             RegisteredDeviceService registeredDeviceService,
             HttpApiClient httpApiClient,
             AuthenticationService authenticationService,
+            ExtensionSessionStateStore extensionSessionStateStore,
             Action<string>? log = null)
         {
             _registeredDeviceService = registeredDeviceService;
             _httpApiClient = httpApiClient;
             _authenticationService = authenticationService;
+            _extensionSessionStateStore = extensionSessionStateStore;
             _log = log;
         }
 
@@ -55,16 +60,30 @@ namespace TrayApp.Services
 
             try
             {
+                if (IsSessionStateRequest(payload))
+                {
+                    return JsonSerializer.Serialize(_extensionSessionStateStore.GetSnapshot());
+                }
+
                 bool authorized = await _authenticationService.EnsureAuthorizedAsync(allowInteractiveLogin: false).ConfigureAwait(false);
                 if (!authorized)
                 {
+                    _extensionSessionStateStore.MarkInvalid("authorization_declined");
                     return CreateErrorResponseJson("authorization_declined", "No active desktop attestation. Log in again from the tray app.");
                 }
 
                 bool hasValidCredential = await _authenticationService.HasValidCredentialForActiveNamespaceAsync().ConfigureAwait(false);
                 if (!hasValidCredential)
                 {
+                    _extensionSessionStateStore.MarkInvalid("active_namespace_credential_missing");
                     return CreateErrorResponseJson("authorization_declined", "The selected namespace does not have an active backend credential for this user.");
+                }
+
+                _extensionSessionStateStore.MarkAuthorized();
+
+                if (IsGroupRequest(payload))
+                {
+                    return await ProcessGroupRequestAsync(payload).ConfigureAwait(false);
                 }
 
                 if (string.Equals(payload.Rest, MessagingAction.Read, StringComparison.OrdinalIgnoreCase))
@@ -74,20 +93,17 @@ namespace TrayApp.Services
 
                 if (string.Equals(payload.Rest, MessagingAction.Create, StringComparison.OrdinalIgnoreCase))
                 {
-                    await HandleCreateAsync(payload).ConfigureAwait(false);
-                    return JsonSerializer.Serialize(new { ok = true });
+                    return await HandleCreateAsync(payload).ConfigureAwait(false);
                 }
 
                 if (string.Equals(payload.Rest, MessagingAction.Update, StringComparison.OrdinalIgnoreCase))
                 {
-                    await HandleUpdateAsync(payload).ConfigureAwait(false);
-                    return JsonSerializer.Serialize(new { ok = true });
+                    return await HandleUpdateAsync(payload).ConfigureAwait(false);
                 }
 
                 if (string.Equals(payload.Rest, MessagingAction.Delete, StringComparison.OrdinalIgnoreCase))
                 {
-                    await HandleDeleteAsync(payload).ConfigureAwait(false);
-                    return JsonSerializer.Serialize(new { ok = true });
+                    return await HandleDeleteAsync(payload).ConfigureAwait(false);
                 }
 
                 return CreateErrorResponseJson("unsupported_operation", $"Unsupported rest operation: {payload.Rest}");
@@ -95,6 +111,7 @@ namespace TrayApp.Services
             catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
                 _authenticationService.RevokeAuthorization();
+                _extensionSessionStateStore.MarkInvalid("authorization_revoked");
                 _log?.Invoke($"[EXT->APP] Credential-store request lost attestation: {ex.Message}");
                 return CreateErrorResponseJson("authorization_expired", "Desktop attestation expired or was revoked. Log in again from the tray app.");
             }
@@ -118,7 +135,7 @@ namespace TrayApp.Services
             });
         }
 
-        private async Task HandleCreateAsync(BrowserExtensionPayloadDto payload)
+        private async Task<string> HandleCreateAsync(BrowserExtensionPayloadDto payload)
         {
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
             string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
@@ -141,6 +158,7 @@ namespace TrayApp.Services
                 AuthTag = encryptedRegistry.AuthTag,
                 Registry = encryptedRegistry.Ciphertext,
                 Label = payload.Label,
+                GroupId = string.IsNullOrWhiteSpace(payload.GroupId) ? null : payload.GroupId,
                 Nonce = NonceGenerator.Create()
             };
 
@@ -151,11 +169,22 @@ namespace TrayApp.Services
                 payloadJson,
                 "create request");
 
-            await _httpApiClient.PostJsonAsync(ConnectionEndpoint, connectionPayload, headers).ConfigureAwait(false);
+            ConnectionReadItemDto? response = await _httpApiClient
+                .PostJsonAsync<ConnectionRequestDto, ConnectionReadItemDto>(ConnectionEndpoint, connectionPayload, headers)
+                .ConfigureAwait(false);
+
+            return response == null
+                ? JsonSerializer.Serialize(new { ok = true })
+                : SerializeCredentialResult(dek, response);
         }
 
-        private async Task HandleUpdateAsync(BrowserExtensionPayloadDto payload)
+        private async Task<string> HandleUpdateAsync(BrowserExtensionPayloadDto payload)
         {
+            if (!TryGetNumericId(payload, out int credentialId))
+            {
+                throw new InvalidOperationException("Credential update requires numeric id.");
+            }
+
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
             string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
             string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
@@ -170,7 +199,7 @@ namespace TrayApp.Services
 
             var connectionPayload = new ConnectionRequestDto
             {
-                Id = payload.Id,
+                Id = credentialId,
                 AccountId = accountId,
                 DeviceId = deviceId,
                 DeviceName = TrayDeviceName,
@@ -178,6 +207,7 @@ namespace TrayApp.Services
                 AuthTag = encryptedRegistry.AuthTag,
                 Registry = encryptedRegistry.Ciphertext,
                 Label = payload.Label,
+                GroupId = string.IsNullOrWhiteSpace(payload.GroupId) ? null : payload.GroupId,
                 Nonce = NonceGenerator.Create()
             };
 
@@ -188,23 +218,29 @@ namespace TrayApp.Services
                 payloadJson,
                 "update request");
 
-            await _httpApiClient.PutJsonAsync(ConnectionEndpoint, connectionPayload, headers).ConfigureAwait(false);
+            ConnectionReadItemDto? response = await _httpApiClient
+                .PutJsonAsync<ConnectionRequestDto, ConnectionReadItemDto>(ConnectionEndpoint, connectionPayload, headers)
+                .ConfigureAwait(false);
+
+            return response == null
+                ? JsonSerializer.Serialize(new { ok = true })
+                : SerializeCredentialResult(dek, response);
         }
 
-        private async Task HandleDeleteAsync(BrowserExtensionPayloadDto payload)
+        private async Task<string> HandleDeleteAsync(BrowserExtensionPayloadDto payload)
         {
-            if (!payload.Id.HasValue)
+            if (!TryGetNumericId(payload, out int credentialId))
             {
-                throw new InvalidOperationException("Delete operation requires id.");
+                throw new InvalidOperationException("Credential delete requires numeric id.");
             }
 
-            var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
+            var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
             string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
             string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
 
             var deletePayload = new
             {
-                id = payload.Id.Value,
+                id = credentialId,
                 accountId,
                 deviceId,
                 deviceName = TrayDeviceName,
@@ -218,7 +254,13 @@ namespace TrayApp.Services
                 payloadJson,
                 "delete request");
 
-            await _httpApiClient.DeleteJsonAsync(ConnectionEndpoint, deletePayload, headers).ConfigureAwait(false);
+            ConnectionReadItemDto? response = await _httpApiClient
+                .DeleteJsonAsync<object, ConnectionReadItemDto>(ConnectionEndpoint, deletePayload, headers)
+                .ConfigureAwait(false);
+
+            return response == null
+                ? JsonSerializer.Serialize(new { ok = true })
+                : SerializeCredentialResult(dek, response);
         }
 
         internal static IReadOnlyDictionary<string, string> CreateSignatureHeaders(
@@ -276,18 +318,241 @@ namespace TrayApp.Services
 
             foreach (ConnectionReadItemDto item in items)
             {
-                string decryptedRegistry = DecryptRegistryWithAesGcm(dek, item.Iv, item.AuthTag, item.Registry);
-
-                results.Add(new ConnectionReadResultDto
-                {
-                    Id = item.Id,
-                    Label = item.Label,
-                    Registry = decryptedRegistry
-                });
+                results.Add(BuildCredentialResult(dek, item));
             }
 
             _log?.Invoke($"[EXT->APP] Read completed. Returned {results.Count} item(s).");
             return JsonSerializer.Serialize(results);
+        }
+
+        private async Task<string> ProcessGroupRequestAsync(BrowserExtensionPayloadDto payload)
+        {
+            if (string.Equals(payload.Rest, MessagingAction.Read, StringComparison.OrdinalIgnoreCase))
+            {
+                return await HandleGroupReadAsync().ConfigureAwait(false);
+            }
+
+            if (string.Equals(payload.Rest, MessagingAction.Create, StringComparison.OrdinalIgnoreCase))
+            {
+                return await HandleGroupCreateAsync(payload).ConfigureAwait(false);
+            }
+
+            if (string.Equals(payload.Rest, MessagingAction.Update, StringComparison.OrdinalIgnoreCase))
+            {
+                return await HandleGroupUpdateAsync(payload).ConfigureAwait(false);
+            }
+
+            if (string.Equals(payload.Rest, MessagingAction.Delete, StringComparison.OrdinalIgnoreCase))
+            {
+                return await HandleGroupDeleteAsync(payload).ConfigureAwait(false);
+            }
+
+            return CreateErrorResponseJson("unsupported_operation", $"Unsupported group rest operation: {payload.Rest}");
+        }
+
+        private async Task<string> HandleGroupReadAsync()
+        {
+            var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
+            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
+            string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
+
+            var payload = new ConnectionReadRequestDto
+            {
+                AccountId = accountId,
+                DeviceId = deviceId,
+                DeviceName = TrayDeviceName,
+                Nonce = NonceGenerator.Create()
+            };
+
+            string payloadJson = JsonSerializer.Serialize(payload);
+            IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(deviceId, payloadJson, "group read request");
+
+            List<CredentialGroupDto>? groups = await _httpApiClient
+                .PostJsonAsync<ConnectionReadRequestDto, List<CredentialGroupDto>>(GroupReadEndpoint, payload, headers)
+                .ConfigureAwait(false);
+
+            groups ??= new List<CredentialGroupDto>();
+            return JsonSerializer.Serialize(groups);
+        }
+
+        private async Task<string> HandleGroupCreateAsync(BrowserExtensionPayloadDto payload)
+        {
+            if (string.IsNullOrWhiteSpace(payload.GroupName))
+            {
+                throw new InvalidOperationException("Group create requires groupName.");
+            }
+
+            var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
+            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
+            string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
+
+            var request = new CredentialGroupCreateRequestDto
+            {
+                AccountId = accountId,
+                DeviceId = deviceId,
+                GroupId = string.IsNullOrWhiteSpace(payload.GroupId) ? Guid.NewGuid().ToString("D") : payload.GroupId,
+                GroupName = payload.GroupName,
+                Nonce = NonceGenerator.Create()
+            };
+
+            string payloadJson = JsonSerializer.Serialize(request);
+            IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(deviceId, payloadJson, "group create request");
+
+            CredentialGroupDto? response = await _httpApiClient
+                .PostJsonAsync<CredentialGroupCreateRequestDto, CredentialGroupDto>(GroupEndpoint, request, headers)
+                .ConfigureAwait(false);
+
+            return response == null
+                ? JsonSerializer.Serialize(new { ok = true, groupId = request.GroupId })
+                : JsonSerializer.Serialize(response);
+        }
+
+        private async Task<string> HandleGroupUpdateAsync(BrowserExtensionPayloadDto payload)
+        {
+            if (string.IsNullOrWhiteSpace(payload.GroupId))
+            {
+                throw new InvalidOperationException("Group update requires groupId.");
+            }
+
+            if (string.IsNullOrWhiteSpace(payload.GroupName))
+            {
+                throw new InvalidOperationException("Group update requires a non-empty groupName.");
+            }
+
+            var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
+            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
+            string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
+
+            var request = new CredentialGroupUpdateRequestDto
+            {
+                AccountId = accountId,
+                DeviceId = deviceId,
+                GroupId = payload.GroupId,
+                GroupName = payload.GroupName,
+                Nonce = NonceGenerator.Create()
+            };
+
+            string payloadJson = JsonSerializer.Serialize(request);
+            IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(deviceId, payloadJson, "group update request");
+
+            CredentialGroupDto? response = await _httpApiClient
+                .PutJsonAsync<CredentialGroupUpdateRequestDto, CredentialGroupDto>(GroupEndpoint, request, headers)
+                .ConfigureAwait(false);
+
+            return response == null
+                ? JsonSerializer.Serialize(new { ok = true, groupId = request.GroupId })
+                : JsonSerializer.Serialize(response);
+        }
+
+        private async Task<string> HandleGroupDeleteAsync(BrowserExtensionPayloadDto payload)
+        {
+            if (string.IsNullOrWhiteSpace(payload.GroupId))
+            {
+                throw new InvalidOperationException("Group delete requires groupId.");
+            }
+
+            var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
+            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
+            string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
+
+            var request = new CredentialGroupDeleteRequestDto
+            {
+                AccountId = accountId,
+                DeviceId = deviceId,
+                GroupId = payload.GroupId,
+                Nonce = NonceGenerator.Create()
+            };
+
+            string payloadJson = JsonSerializer.Serialize(request);
+            IReadOnlyDictionary<string, string> headers = CreateSignatureHeaders(deviceId, payloadJson, "group delete request");
+
+            CredentialGroupDto? response = await _httpApiClient
+                .DeleteJsonAsync<CredentialGroupDeleteRequestDto, CredentialGroupDto>(GroupEndpoint, request, headers)
+                .ConfigureAwait(false);
+
+            return response == null
+                ? JsonSerializer.Serialize(new { ok = true, groupId = request.GroupId })
+                : JsonSerializer.Serialize(response);
+        }
+
+        private static bool IsGroupRequest(BrowserExtensionPayloadDto payload)
+        {
+            return string.Equals(payload.Resource, MessagingResource.Group, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSessionStateRequest(BrowserExtensionPayloadDto payload)
+        {
+            return string.Equals(payload.Rest, MessagingAction.State, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(payload.Resource, MessagingResource.Session, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryGetNumericId(BrowserExtensionPayloadDto payload, out int id)
+        {
+            id = 0;
+
+            if (!payload.Id.HasValue)
+            {
+                return false;
+            }
+
+            JsonElement value = payload.Id.Value;
+
+            if (value.ValueKind == JsonValueKind.Number)
+            {
+                return value.TryGetInt32(out id);
+            }
+
+            if (value.ValueKind == JsonValueKind.String)
+            {
+                return int.TryParse(value.GetString(), out id);
+            }
+
+            return false;
+        }
+
+        private static bool TryGetStringId(BrowserExtensionPayloadDto payload, out string id)
+        {
+            id = string.Empty;
+
+            if (!payload.Id.HasValue)
+            {
+                return false;
+            }
+
+            JsonElement value = payload.Id.Value;
+
+            if (value.ValueKind == JsonValueKind.String)
+            {
+                id = value.GetString() ?? string.Empty;
+                return !string.IsNullOrWhiteSpace(id);
+            }
+
+            if (value.ValueKind == JsonValueKind.Number)
+            {
+                id = value.GetRawText();
+                return !string.IsNullOrWhiteSpace(id);
+            }
+
+            return false;
+        }
+
+        private static string SerializeCredentialResult(byte[] dek, ConnectionReadItemDto item)
+        {
+            return JsonSerializer.Serialize(BuildCredentialResult(dek, item));
+        }
+
+        private static ConnectionReadResultDto BuildCredentialResult(byte[] dek, ConnectionReadItemDto item)
+        {
+            string decryptedRegistry = DecryptRegistryWithAesGcm(dek, item.Iv, item.AuthTag, item.Registry);
+
+            return new ConnectionReadResultDto
+            {
+                Id = item.Id,
+                Label = item.Label,
+                CredentialGroupId = item.CredentialGroupId,
+                Registry = decryptedRegistry,
+                Group = item.Group
+            };
         }
 
         private static (string Iv, string AuthTag, string Ciphertext) EncryptRegistryWithAesGcm(byte[] dek, string registryJson)

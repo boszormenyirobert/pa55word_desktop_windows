@@ -123,6 +123,40 @@ namespace TrayApp.Services
             }
         }
 
+        public async Task<TResponse?> PutJsonAsync<TRequest, TResponse>(
+            string endpoint,
+            TRequest payload,
+            IReadOnlyDictionary<string, string>? headers = null)
+        {
+            string json = JsonSerializer.Serialize(payload);
+            using var request = CreateJsonPutRequest(endpoint, json, headers);
+            LogRequest(request, json, "[HTTP-PUT]");
+            using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+            string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            LogResponse(response, endpoint, responseBody, "[HTTP-PUT]");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new ApiRequestException(
+                    HttpMethod.Put,
+                    endpoint,
+                    response.StatusCode,
+                    responseBody);
+            }
+
+            if (string.IsNullOrWhiteSpace(responseBody))
+            {
+                return default;
+            }
+
+            return JsonSerializer.Deserialize<TResponse>(
+                responseBody,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+        }
+
         public async Task DeleteJsonAsync<T>(
             string endpoint,
             T payload,
