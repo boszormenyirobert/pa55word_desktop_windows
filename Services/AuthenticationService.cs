@@ -57,25 +57,17 @@ namespace TrayApp.Services
 
         public async Task<bool> EnsureAuthorizedAsync(bool allowInteractiveLogin = true)
         {
-            AuthorizationContext context = CreateAuthorizationContext();
+            IReadOnlyList<AuthorizationContext> knownContexts = CreateAuthorizationContexts();
 
-            if (_authorizationSessionStore.Matches(context.UserId, context.AccountId, context.DeviceId))
+            if (await TryReuseAnyActiveAuthorizationAsync(knownContexts, notifyOnExpiredSession: true).ConfigureAwait(false))
             {
-                bool stillActive = await CheckActiveAttestationAsync(context, persistSession: true).ConfigureAwait(false);
-                if (stillActive)
-                {
-                    _log?.Invoke("[AUTH] Reusing active attestation.");
-                    return true;
-                }
+                return true;
+            }
 
-                _authorizationSessionStore.Revoke();
-                _log?.Invoke("[AUTH] Cached attestation was no longer active.");
-                NotifyAuthorizationStatus("Desktop attestation expired. Log in again.", ToolTipIcon.Warning);
-
-                if (!allowInteractiveLogin)
-                {
-                    return false;
-                }
+            if (await TryFindAnyActiveAuthorizationAsync(knownContexts).ConfigureAwait(false))
+            {
+                _log?.Invoke("[AUTH] Found an active attestation in a known namespace context.");
+                return true;
             }
 
             if (!allowInteractiveLogin)
@@ -86,19 +78,21 @@ namespace TrayApp.Services
             await _authenticationLock.WaitAsync().ConfigureAwait(false);
             try
             {
-                context = CreateAuthorizationContext();
+                knownContexts = CreateAuthorizationContexts();
 
-                if (_authorizationSessionStore.Matches(context.UserId, context.AccountId, context.DeviceId))
+                if (await TryReuseAnyActiveAuthorizationAsync(knownContexts, notifyOnExpiredSession: false).ConfigureAwait(false))
                 {
-                    bool stillActive = await CheckActiveAttestationAsync(context, persistSession: true).ConfigureAwait(false);
-                    if (stillActive)
-                    {
-                        _log?.Invoke("[AUTH] Reusing active attestation after lock.");
-                        return true;
-                    }
-
-                    _authorizationSessionStore.Revoke();
+                    _log?.Invoke("[AUTH] Reusing active attestation after lock.");
+                    return true;
                 }
+
+                if (await TryFindAnyActiveAuthorizationAsync(knownContexts).ConfigureAwait(false))
+                {
+                    _log?.Invoke("[AUTH] Found an active attestation in a known namespace context after lock.");
+                    return true;
+                }
+
+                AuthorizationContext context = CreateAuthorizationContext();
 
                 bool authorized = await RequestAuthorizationAsync(context).ConfigureAwait(false);
                 if (!authorized)
@@ -131,14 +125,16 @@ namespace TrayApp.Services
         {
             AuthorizationContext loginContext = CreateAuthorizationContext();
             AuthorizationContext activeNamespaceContext = CreateActiveNamespaceAuthorizationContext();
+            IReadOnlyList<AuthorizationContext> knownContexts = CreateAuthorizationContexts();
+            AuthorizationContext? storedContext = FindStoredAuthorizationContext(knownContexts);
 
-            if (!_authorizationSessionStore.Matches(loginContext.UserId, loginContext.AccountId, loginContext.DeviceId))
+            if (storedContext == null)
             {
                 return AuthorizationHealthResult.Invalid("authorization_missing");
             }
 
             AuthorizationHealthResult loginHealth = await CheckAuthorizationContextHealthAsync(
-                loginContext,
+                storedContext,
                 persistSession: true,
                 inactiveReason: "authorization_revoked").ConfigureAwait(false);
 
@@ -173,8 +169,13 @@ namespace TrayApp.Services
 
             try
             {
-                AuthorizationContext context = CreateAuthorizationContext();
-                remoteSuccess = await RevokeActiveAttestationAsync(context).ConfigureAwait(false);
+                IReadOnlyList<AuthorizationContext> knownContexts = CreateAuthorizationContexts();
+
+                foreach (AuthorizationContext context in knownContexts)
+                {
+                    bool contextSuccess = await RevokeActiveAttestationAsync(context).ConfigureAwait(false);
+                    remoteSuccess &= contextSuccess;
+                }
             }
             catch (Exception ex)
             {
@@ -536,6 +537,35 @@ namespace TrayApp.Services
             return new AuthorizationContext(userId, accountId, deviceId, baseUrl);
         }
 
+        private IReadOnlyList<AuthorizationContext> CreateAuthorizationContexts()
+        {
+            DesktopRegistration registration = _registeredDeviceService.ReadRegistration();
+            var contexts = new List<AuthorizationContext>
+            {
+                CreateAuthorizationContext()
+            };
+
+            foreach (NamespaceItemDto namespaceItem in registration.Namespaces)
+            {
+                string accountId = string.IsNullOrWhiteSpace(namespaceItem.AccountId)
+                    ? registration.AccountId
+                    : namespaceItem.AccountId;
+                string deviceId = string.IsNullOrWhiteSpace(namespaceItem.DeviceId)
+                    ? registration.DeviceId
+                    : namespaceItem.DeviceId;
+                string baseUrl = string.IsNullOrWhiteSpace(namespaceItem.Url)
+                    ? AppEnvironment.BackendBaseUrl
+                    : namespaceItem.Url.TrimEnd('/');
+
+                contexts.Add(new AuthorizationContext(registration.UserKey, accountId, deviceId, baseUrl));
+            }
+
+            return contexts
+                .GroupBy(context => $"{context.AccountId}|{context.DeviceId}|{context.BaseUrl}", StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToArray();
+        }
+
         private AuthorizationContext CreateActiveNamespaceAuthorizationContext()
         {
             DesktopRegistration registration = _registeredDeviceService.ReadRegistration();
@@ -571,6 +601,62 @@ namespace TrayApp.Services
                    string.Equals(left.AccountId, right.AccountId, StringComparison.Ordinal) &&
                    string.Equals(left.DeviceId, right.DeviceId, StringComparison.Ordinal) &&
                    string.Equals(left.BaseUrl, right.BaseUrl, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async Task<bool> TryReuseAnyActiveAuthorizationAsync(
+            IReadOnlyList<AuthorizationContext> contexts,
+            bool notifyOnExpiredSession)
+        {
+            AuthorizationContext? storedContext = FindStoredAuthorizationContext(contexts);
+            if (storedContext == null)
+            {
+                return false;
+            }
+
+            AuthorizationHealthResult health = await CheckAuthorizationContextHealthAsync(
+                storedContext,
+                persistSession: true,
+                inactiveReason: "authorization_revoked").ConfigureAwait(false);
+
+            if (health.Authorized)
+            {
+                _log?.Invoke("[AUTH] Reusing active attestation.");
+                return true;
+            }
+
+            _authorizationSessionStore.Revoke();
+            _log?.Invoke("[AUTH] Cached attestation was no longer active.");
+
+            if (notifyOnExpiredSession)
+            {
+                NotifyAuthorizationStatus("Desktop attestation expired. Log in again.", ToolTipIcon.Warning);
+            }
+
+            return false;
+        }
+
+        private async Task<bool> TryFindAnyActiveAuthorizationAsync(IReadOnlyList<AuthorizationContext> contexts)
+        {
+            foreach (AuthorizationContext context in contexts)
+            {
+                AuthorizationHealthResult health = await CheckAuthorizationContextHealthAsync(
+                    context,
+                    persistSession: true,
+                    inactiveReason: "authorization_revoked").ConfigureAwait(false);
+
+                if (health.Authorized)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private AuthorizationContext? FindStoredAuthorizationContext(IReadOnlyList<AuthorizationContext> contexts)
+        {
+            return contexts.FirstOrDefault(context =>
+                _authorizationSessionStore.Matches(context.UserId, context.AccountId, context.DeviceId));
         }
 
         private void NotifyAuthorizationStatus(string? message, ToolTipIcon icon)

@@ -180,16 +180,18 @@ namespace TrayApp.Services
             }
 
             DesktopRegistration? registration = null;
+            string nonce = NonceGenerator.Create();
             string registrationPayload = JsonSerializer.Serialize(new
             {
-                deviceId
+                deviceId,
+                nonce
             });
 
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
                 deviceId,
                 registrationPayload,
                 "registration polling request");
-            string endpoint = BuildRegistrationApiUrl(deviceId, pendingRootRegistration?.BaseUrl ?? baseUrlOverride);
+            string endpoint = BuildRegistrationApiUrl(deviceId, nonce, pendingRootRegistration?.BaseUrl ?? baseUrlOverride);
 
             if (pendingRegistration != null)
             {
@@ -266,35 +268,43 @@ namespace TrayApp.Services
 
             if (registration != null)
             {
-                if (pendingRegistration != null)
+                try
                 {
-                    Debug.WriteLine(
-                        $"[REG] Starting namespace resolve after SSE. deviceId='{pendingRegistration.DeviceId}', namespaceId='{pendingRegistration.NamespaceId}'.");
-                    string resolvedAccountId = await ResolveNamespaceAccountIdAsync(pendingRegistration).ConfigureAwait(false);
-                    Debug.WriteLine(
-                        $"[REG] Namespace resolve succeeded. namespaceId='{pendingRegistration.NamespaceId}', accountId='{resolvedAccountId}'.");
-                    _configStore.UpdateNamespaceAccountId(pendingRegistration.UserId, pendingRegistration.NamespaceId, resolvedAccountId);
-                    Debug.WriteLine(
-                        $"[REG] Preserving existing root registration after namespace add. SSE registration for deviceId='{registration.DeviceId}' will not overwrite config root fields.");
-                }
-
-                _pendingRootRegistration = null;
-                _pendingServerRegistration = null;
-
-                if (pendingRegistration == null)
-                {
-                    if (pendingRootRegistration != null)
+                    if (pendingRegistration != null)
                     {
-                        registration.UserId = pendingRootRegistration.UserId;
-                        registration.UserName = pendingRootRegistration.UserName;
+                        Debug.WriteLine(
+                            $"[REG] Starting namespace resolve after SSE. deviceId='{pendingRegistration.DeviceId}', namespaceId='{pendingRegistration.NamespaceId}'.");
+                        string resolvedAccountId = await ResolveNamespaceAccountIdAsync(pendingRegistration).ConfigureAwait(false);
+                        Debug.WriteLine(
+                            $"[REG] Namespace resolve succeeded. namespaceId='{pendingRegistration.NamespaceId}', accountId='{resolvedAccountId}'.");
+                        _configStore.UpdateNamespaceAccountId(pendingRegistration.UserId, pendingRegistration.NamespaceId, resolvedAccountId);
+                        Debug.WriteLine(
+                            $"[REG] Preserving existing root registration after namespace add. SSE registration for deviceId='{registration.DeviceId}' will not overwrite config root fields.");
                     }
 
-                    _configStore.SaveRegistration(registration);
-                    AppEnvironment.SetActiveUser(registration.UserKey);
-                }
+                    _pendingRootRegistration = null;
+                    _pendingServerRegistration = null;
 
-                RegistrationCompleted?.Invoke();
-                Debug.WriteLine($"[REG] Registration flow completed for deviceId='{registration.DeviceId}'.");
+                    if (pendingRegistration == null)
+                    {
+                        if (pendingRootRegistration != null)
+                        {
+                            registration.UserId = pendingRootRegistration.UserId;
+                            registration.UserName = pendingRootRegistration.UserName;
+                        }
+
+                        _configStore.SaveRegistration(registration);
+                        AppEnvironment.SetActiveUser(registration.UserKey);
+                    }
+
+                    RegistrationCompleted?.Invoke();
+                    Debug.WriteLine($"[REG] Registration flow completed for deviceId='{registration.DeviceId}'.");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[REG] Registration finalization failed: {ex}");
+                    RegistrationFailed?.Invoke(ex.Message);
+                }
             }
             else
             {
@@ -307,10 +317,12 @@ namespace TrayApp.Services
         private static async Task<string> ResolveNamespaceAccountIdAsync(PendingRegistrationContext pendingRegistration)
         {
             var httpApiClient = new HttpApiClient();
+            string nonce = NonceGenerator.Create();
             string resolvePayload = JsonSerializer.Serialize(new
             {
                 deviceId = pendingRegistration.DeviceId,
-                namespaceId = pendingRegistration.NamespaceId
+                namespaceId = pendingRegistration.NamespaceId,
+                nonce
             });
 
             IReadOnlyDictionary<string, string> resolveHeaders = BrowserCommandHandler.CreateSignatureHeaders(
@@ -322,7 +334,7 @@ namespace TrayApp.Services
                 ? $"len={resolveSignature.Length}"
                 : "missing";
 
-            string resolveEndpoint = $"{pendingRegistration.NamespaceUrl}{ApiRoutes.VersionPrefix}/{ApiRoutes.ResolveNamespace(pendingRegistration.DeviceId, pendingRegistration.NamespaceId)}";
+            string resolveEndpoint = $"{pendingRegistration.NamespaceUrl}{ApiRoutes.VersionPrefix}/{ApiRoutes.ResolveNamespace(pendingRegistration.DeviceId, pendingRegistration.NamespaceId, nonce)}";
 
             Debug.WriteLine($"[REG] Resolve endpoint: {resolveEndpoint}");
             Debug.WriteLine($"[REG] Resolve payload: {resolvePayload}");
@@ -343,14 +355,14 @@ namespace TrayApp.Services
             return resolveResponse.AccountId;
         }
 
-        private static string BuildRegistrationApiUrl(string deviceId, string? baseUrlOverride)
+        private static string BuildRegistrationApiUrl(string deviceId, string nonce, string? baseUrlOverride)
         {
             if (string.IsNullOrWhiteSpace(baseUrlOverride))
             {
-                return AppEnvironment.BuildApiUrl(ApiRoutes.RootDevice(deviceId));
+                return AppEnvironment.BuildApiUrl(ApiRoutes.RootDevice(deviceId, nonce));
             }
 
-            return $"{NormalizeBaseUrl(baseUrlOverride)}{ApiRoutes.VersionPrefix}/{ApiRoutes.RootDevice(deviceId)}";
+            return $"{NormalizeBaseUrl(baseUrlOverride)}{ApiRoutes.VersionPrefix}/{ApiRoutes.RootDevice(deviceId, nonce)}";
         }
 
         private static string NormalizeBaseUrl(string baseUrl)

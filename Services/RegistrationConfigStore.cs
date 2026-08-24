@@ -122,6 +122,12 @@ namespace TrayApp.Services
                 {
                     namespaceItem.DeviceId = registration.DeviceId;
                 }
+
+                if (string.IsNullOrWhiteSpace(namespaceItem.DeviceName) &&
+                    string.Equals(namespaceItem.DeviceId, registration.DeviceId, StringComparison.Ordinal))
+                {
+                    namespaceItem.DeviceName = Environment.MachineName;
+                }
             }
 
             List<DesktopRegistration> registrations = TryReadRegistrations(out List<DesktopRegistration>? existingRegistrations)
@@ -139,6 +145,8 @@ namespace TrayApp.Services
             {
                 registrations.Add(registration);
             }
+
+            EnsureNoCrossUserNamespaceConflicts(registrations);
 
             string json = JsonSerializer.Serialize(registrations, ConfigJsonOptions);
             File.WriteAllText(filePath, json);
@@ -265,7 +273,10 @@ namespace TrayApp.Services
                     ? existingNamespacesById.GetValueOrDefault(namespaceId)?.DeviceId ?? registration.DeviceId
                     : incomingNamespace.DeviceId;
                 string resolvedDeviceName = string.IsNullOrWhiteSpace(incomingNamespace.DeviceName)
-                    ? existingNamespacesById.GetValueOrDefault(namespaceId)?.DeviceName ?? string.Empty
+                    ? existingNamespacesById.GetValueOrDefault(namespaceId)?.DeviceName
+                        ?? (string.Equals(resolvedDeviceId, registration.DeviceId, StringComparison.Ordinal)
+                            ? Environment.MachineName
+                            : string.Empty)
                     : incomingNamespace.DeviceName;
 
                 syncedNamespaces.Add(new NamespaceItemDto
@@ -374,6 +385,45 @@ namespace TrayApp.Services
             }
 
             return Guid.NewGuid().ToString("D");
+        }
+
+        private static void EnsureNoCrossUserNamespaceConflicts(IReadOnlyCollection<DesktopRegistration> registrations)
+        {
+            var ownershipByNamespaceKey = new Dictionary<string, DesktopRegistration>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (DesktopRegistration registration in registrations)
+            {
+                string ownerKey = registration.UserKey;
+
+                foreach (NamespaceItemDto namespaceItem in registration.Namespaces)
+                {
+                    if (string.IsNullOrWhiteSpace(namespaceItem.NamespaceId) || string.IsNullOrWhiteSpace(namespaceItem.Url))
+                    {
+                        continue;
+                    }
+
+                    string namespaceKey = CreateNamespaceOwnershipKey(namespaceItem.NamespaceId, namespaceItem.Url);
+
+                    if (ownershipByNamespaceKey.TryGetValue(namespaceKey, out DesktopRegistration? existingOwner) &&
+                        !string.Equals(existingOwner.UserKey, ownerKey, StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException(
+                            $"Namespace '{namespaceItem.NamespaceId}' at '{NormalizeNamespaceUrl(namespaceItem.Url)}' is already registered for user '{existingOwner.DisplayUserName}'.");
+                    }
+
+                    ownershipByNamespaceKey[namespaceKey] = registration;
+                }
+            }
+        }
+
+        private static string CreateNamespaceOwnershipKey(string namespaceId, string url)
+        {
+            return $"{namespaceId.Trim()}|{NormalizeNamespaceUrl(url)}";
+        }
+
+        private static string NormalizeNamespaceUrl(string url)
+        {
+            return url.Trim().TrimEnd('/');
         }
     }
 }

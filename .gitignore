@@ -3,3 +3,6 @@ bin/
 obj/
 *.user
 config.json
+config.json_bkp
+test-data/
+todo-nonce.md

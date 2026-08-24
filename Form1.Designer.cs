@@ -34,7 +34,6 @@
             this.contextMenuStrip1 = new ContextMenuStrip(this.components);
             this.loginToolStripMenuItem = new ToolStripMenuItem();
             this.logoutToolStripMenuItem = new ToolStripMenuItem();
-            this.registerServerToolStripMenuItem = new ToolStripMenuItem();
             this.exitToolStripMenuItem = new ToolStripMenuItem();
             this.pictureBoxQr = new PictureBox();
             this.device_registration = new Label();
@@ -59,7 +58,7 @@
             this.contextMenuStrip1.AutoSize = false;
             this.contextMenuStrip1.BackColor = Color.LightSkyBlue;
             this.contextMenuStrip1.Font = new Font("Segoe UI", 10F);
-            this.contextMenuStrip1.Items.AddRange(new ToolStripItem[] { this.loginToolStripMenuItem, this.logoutToolStripMenuItem, this.registerServerToolStripMenuItem, this.exitToolStripMenuItem });
+            this.contextMenuStrip1.Items.AddRange(new ToolStripItem[] { this.loginToolStripMenuItem, this.logoutToolStripMenuItem, this.exitToolStripMenuItem });
             this.contextMenuStrip1.Name = "contextMenuStrip1";
             this.contextMenuStrip1.RenderMode = ToolStripRenderMode.System;
             this.contextMenuStrip1.Size = new Size(500, 300);
@@ -76,13 +75,6 @@
             this.logoutToolStripMenuItem.Size = new Size(180, 24);
             this.logoutToolStripMenuItem.Text = "logout";
             this.logoutToolStripMenuItem.Click += this.logoutToolStripMenuItem_Click;
-            // 
-            // registerServerToolStripMenuItem
-            // 
-            this.registerServerToolStripMenuItem.Name = "registerServerToolStripMenuItem";
-            this.registerServerToolStripMenuItem.Size = new Size(180, 24);
-            this.registerServerToolStripMenuItem.Text = "register server";
-            this.registerServerToolStripMenuItem.Click += this.registerServerToolStripMenuItem_Click;
             // 
             // exitToolStripMenuItem
             // 
@@ -182,7 +174,6 @@
         private ContextMenuStrip contextMenuStrip1;
         private ToolStripMenuItem loginToolStripMenuItem;
         private ToolStripMenuItem logoutToolStripMenuItem;
-        private ToolStripMenuItem registerServerToolStripMenuItem;
         private ToolStripMenuItem exitToolStripMenuItem;
         private PictureBox pictureBoxQr;
         private Label device_registration;

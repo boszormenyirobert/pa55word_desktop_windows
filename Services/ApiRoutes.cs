@@ -16,6 +16,11 @@ namespace TrayApp.Services
             return $"root-device/{Uri.EscapeDataString(deviceId)}";
         }
 
+        public static string RootDevice(string deviceId, string nonce)
+        {
+            return $"{RootDevice(deviceId)}?nonce={Uri.EscapeDataString(nonce)}";
+        }
+
         public static string AuthenticationStatusNotification(string accountId, string deviceId, string notificationId)
         {
             return $"{AuthenticationStatus}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(deviceId)}/{Uri.EscapeDataString(notificationId)}";
@@ -44,6 +49,11 @@ namespace TrayApp.Services
         public static string ResolveNamespace(string deviceId, string namespaceId)
         {
             return $"account/resolve/{Uri.EscapeDataString(deviceId)}/{Uri.EscapeDataString(namespaceId)}";
+        }
+
+        public static string ResolveNamespace(string deviceId, string namespaceId, string nonce)
+        {
+            return $"{ResolveNamespace(deviceId, namespaceId)}?nonce={Uri.EscapeDataString(nonce)}";
         }
     }
 }
