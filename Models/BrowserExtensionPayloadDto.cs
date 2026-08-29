@@ -8,6 +8,9 @@ internal class BrowserExtensionPayloadDto
     public string Label { get; set; } = string.Empty;
     public string? GroupId { get; set; }
     public string? GroupName { get; set; }
+    public string? Iv { get; set; }
+    public string? AuthTag { get; set; }
+    public string? EncryptedRegistry { get; set; }
     public string? Resource { get; set; }
     public BrowserRegistryDto Registry { get; set; } = new BrowserRegistryDto();
     public string Rest { get; set; } = string.Empty;

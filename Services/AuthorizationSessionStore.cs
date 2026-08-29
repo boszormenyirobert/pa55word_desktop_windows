@@ -8,6 +8,8 @@ namespace TrayApp.Services
         {
             public bool Active { get; set; }
             public string BoundUserId { get; set; } = string.Empty;
+            public string NamespaceId { get; set; } = string.Empty;
+            public string BaseUrl { get; set; } = string.Empty;
             public string AccountId { get; set; } = string.Empty;
             public string DesktopId { get; set; } = string.Empty;
             public DateTimeOffset? ExpiresAtUtc { get; set; }
@@ -18,6 +20,8 @@ namespace TrayApp.Services
         {
             public bool Active { get; init; }
             public string BoundUserId { get; init; } = string.Empty;
+            public string NamespaceId { get; init; } = string.Empty;
+            public string BaseUrl { get; init; } = string.Empty;
             public string AccountId { get; init; } = string.Empty;
             public string DesktopId { get; init; } = string.Empty;
             public DateTimeOffset? ExpiresAtUtc { get; init; }
@@ -26,7 +30,7 @@ namespace TrayApp.Services
 
         private readonly object _syncRoot = new();
         private readonly string _filePath;
-        private AuthorizationSessionSnapshot? _snapshot;
+        private List<AuthorizationSessionSnapshot> _snapshots;
 
         public AuthorizationSessionStore()
         {
@@ -36,7 +40,7 @@ namespace TrayApp.Services
 
             Directory.CreateDirectory(sessionDirectoryPath);
             _filePath = Path.Combine(sessionDirectoryPath, "authorization-session.json");
-            _snapshot = LoadSnapshot();
+            _snapshots = LoadSnapshots();
         }
 
         public bool IsAuthorized
@@ -45,34 +49,54 @@ namespace TrayApp.Services
             {
                 lock (_syncRoot)
                 {
-                    if (!TryGetSnapshotCore(out AuthorizationSessionSnapshot? snapshot))
-                    {
-                        return false;
-                    }
-
-                    AuthorizationSessionSnapshot currentSnapshot = snapshot!;
-
                     string? activeUserId = AppEnvironment.GetActiveUserId();
                     return !string.IsNullOrWhiteSpace(activeUserId) &&
-                           string.Equals(currentSnapshot.BoundUserId, activeUserId, StringComparison.Ordinal);
+                           GetActiveSnapshotsCore().Any(snapshot =>
+                               string.Equals(snapshot.BoundUserId, activeUserId, StringComparison.Ordinal));
                 }
             }
         }
 
-        public bool Matches(string boundUserId, string accountId, string desktopId)
+        public bool Matches(string boundUserId, string accountId, string desktopId, string baseUrl)
         {
             lock (_syncRoot)
             {
-                if (!TryGetSnapshotCore(out AuthorizationSessionSnapshot? snapshot))
-                {
-                    return false;
-                }
+                return GetActiveSnapshotsCore().Any(snapshot =>
+                    string.Equals(snapshot.BoundUserId, boundUserId, StringComparison.Ordinal) &&
+                    string.Equals(snapshot.BaseUrl, NormalizeBaseUrl(baseUrl), StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(snapshot.AccountId, accountId, StringComparison.Ordinal) &&
+                    string.Equals(snapshot.DesktopId, desktopId, StringComparison.Ordinal));
+            }
+        }
 
-                AuthorizationSessionSnapshot currentSnapshot = snapshot!;
+        public bool HasActiveSessionForNamespace(string boundUserId, string namespaceId)
+        {
+            if (string.IsNullOrWhiteSpace(boundUserId) || string.IsNullOrWhiteSpace(namespaceId))
+            {
+                return false;
+            }
 
-                return string.Equals(currentSnapshot.BoundUserId, boundUserId, StringComparison.Ordinal) &&
-                       string.Equals(currentSnapshot.AccountId, accountId, StringComparison.Ordinal) &&
-                       string.Equals(currentSnapshot.DesktopId, desktopId, StringComparison.Ordinal);
+            lock (_syncRoot)
+            {
+                return GetActiveSnapshotsCore().Any(snapshot =>
+                    string.Equals(snapshot.BoundUserId, boundUserId, StringComparison.Ordinal) &&
+                    string.Equals(snapshot.NamespaceId, namespaceId, StringComparison.Ordinal));
+            }
+        }
+
+        public bool HasActiveSessionForBaseUrl(string boundUserId, string baseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(boundUserId) || string.IsNullOrWhiteSpace(baseUrl))
+            {
+                return false;
+            }
+
+            lock (_syncRoot)
+            {
+                string normalizedBaseUrl = NormalizeBaseUrl(baseUrl);
+                return GetActiveSnapshotsCore().Any(snapshot =>
+                    string.Equals(snapshot.BoundUserId, boundUserId, StringComparison.Ordinal) &&
+                    string.Equals(snapshot.BaseUrl, normalizedBaseUrl, StringComparison.OrdinalIgnoreCase));
             }
         }
 
@@ -80,30 +104,68 @@ namespace TrayApp.Services
         {
             lock (_syncRoot)
             {
-                if (!TryGetSnapshotCore(out AuthorizationSessionSnapshot? snapshot))
+                string? activeUserId = AppEnvironment.GetActiveUserId();
+                if (string.IsNullOrWhiteSpace(activeUserId))
                 {
                     state = null;
                     return false;
                 }
 
-                AuthorizationSessionSnapshot currentSnapshot = snapshot!;
+                AuthorizationSessionSnapshot? snapshot = GetActiveSnapshotsCore().FirstOrDefault(item =>
+                    string.Equals(item.BoundUserId, activeUserId, StringComparison.Ordinal));
+
+                if (snapshot == null)
+                {
+                    state = null;
+                    return false;
+                }
 
                 state = new AuthorizationSessionState
                 {
-                    Active = currentSnapshot.Active,
-                    BoundUserId = currentSnapshot.BoundUserId,
-                    AccountId = currentSnapshot.AccountId,
-                    DesktopId = currentSnapshot.DesktopId,
-                    ExpiresAtUtc = currentSnapshot.ExpiresAtUtc,
-                    AttestationId = currentSnapshot.AttestationId
+                    Active = snapshot.Active,
+                    BoundUserId = snapshot.BoundUserId,
+                    NamespaceId = snapshot.NamespaceId,
+                    BaseUrl = snapshot.BaseUrl,
+                    AccountId = snapshot.AccountId,
+                    DesktopId = snapshot.DesktopId,
+                    ExpiresAtUtc = snapshot.ExpiresAtUtc,
+                    AttestationId = snapshot.AttestationId
                 };
 
                 return true;
             }
         }
 
+        public IReadOnlyList<AuthorizationSessionState> GetStates(string boundUserId)
+        {
+            if (string.IsNullOrWhiteSpace(boundUserId))
+            {
+                return Array.Empty<AuthorizationSessionState>();
+            }
+
+            lock (_syncRoot)
+            {
+                return GetActiveSnapshotsCore()
+                    .Where(snapshot => string.Equals(snapshot.BoundUserId, boundUserId, StringComparison.Ordinal))
+                    .Select(snapshot => new AuthorizationSessionState
+                    {
+                        Active = snapshot.Active,
+                        BoundUserId = snapshot.BoundUserId,
+                        NamespaceId = snapshot.NamespaceId,
+                        BaseUrl = snapshot.BaseUrl,
+                        AccountId = snapshot.AccountId,
+                        DesktopId = snapshot.DesktopId,
+                        ExpiresAtUtc = snapshot.ExpiresAtUtc,
+                        AttestationId = snapshot.AttestationId
+                    })
+                    .ToArray();
+            }
+        }
+
         public void SaveActive(
             string boundUserId,
+            string namespaceId,
+            string baseUrl,
             string accountId,
             string desktopId,
             DateTimeOffset? expiresAtUtc,
@@ -111,17 +173,70 @@ namespace TrayApp.Services
         {
             lock (_syncRoot)
             {
-                _snapshot = new AuthorizationSessionSnapshot
+                string normalizedBaseUrl = NormalizeBaseUrl(baseUrl);
+                AuthorizationSessionSnapshot? existingSnapshot = GetActiveSnapshotsCore().FirstOrDefault(snapshot =>
+                    string.Equals(snapshot.BoundUserId, boundUserId, StringComparison.Ordinal) &&
+                    string.Equals(snapshot.NamespaceId, namespaceId, StringComparison.Ordinal) &&
+                    string.Equals(snapshot.BaseUrl, normalizedBaseUrl, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(snapshot.AccountId, accountId, StringComparison.Ordinal) &&
+                    string.Equals(snapshot.DesktopId, desktopId, StringComparison.Ordinal));
+
+                if (existingSnapshot == null)
                 {
-                    Active = true,
-                    BoundUserId = boundUserId,
-                    AccountId = accountId,
-                    DesktopId = desktopId,
-                    ExpiresAtUtc = expiresAtUtc,
-                    AttestationId = attestationId
-                };
+                    _snapshots.Add(new AuthorizationSessionSnapshot
+                    {
+                        Active = true,
+                        BoundUserId = boundUserId,
+                        NamespaceId = namespaceId,
+                        BaseUrl = normalizedBaseUrl,
+                        AccountId = accountId,
+                        DesktopId = desktopId,
+                        ExpiresAtUtc = expiresAtUtc,
+                        AttestationId = attestationId
+                    });
+                }
+                else
+                {
+                    existingSnapshot.Active = true;
+                    existingSnapshot.ExpiresAtUtc = expiresAtUtc;
+                    existingSnapshot.AttestationId = attestationId;
+                }
 
                 SaveAuthorizationSession();
+            }
+        }
+
+        public void Revoke(string boundUserId, string accountId, string desktopId, string baseUrl)
+        {
+            lock (_syncRoot)
+            {
+            string normalizedBaseUrl = NormalizeBaseUrl(baseUrl);
+                if (_snapshots.RemoveAll(snapshot =>
+                        string.Equals(snapshot.BoundUserId, boundUserId, StringComparison.Ordinal) &&
+                string.Equals(snapshot.BaseUrl, normalizedBaseUrl, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(snapshot.AccountId, accountId, StringComparison.Ordinal) &&
+                        string.Equals(snapshot.DesktopId, desktopId, StringComparison.Ordinal)) > 0)
+                {
+                    SaveAuthorizationSession();
+                }
+            }
+        }
+
+        public void Revoke(string boundUserId, string namespaceId)
+        {
+            if (string.IsNullOrWhiteSpace(boundUserId) || string.IsNullOrWhiteSpace(namespaceId))
+            {
+                return;
+            }
+
+            lock (_syncRoot)
+            {
+                if (_snapshots.RemoveAll(snapshot =>
+                        string.Equals(snapshot.BoundUserId, boundUserId, StringComparison.Ordinal) &&
+                        string.Equals(snapshot.NamespaceId, namespaceId, StringComparison.Ordinal)) > 0)
+                {
+                    SaveAuthorizationSession();
+                }
             }
         }
 
@@ -129,82 +244,99 @@ namespace TrayApp.Services
         {
             lock (_syncRoot)
             {
-                ClearAuthorizationSession();
+                ClearAuthorizationSessions();
             }
         }
 
-        private AuthorizationSessionSnapshot? LoadSnapshot()
+        private List<AuthorizationSessionSnapshot> LoadSnapshots()
         {
             if (!File.Exists(_filePath))
             {
-                return null;
+                return new List<AuthorizationSessionSnapshot>();
             }
 
             try
             {
                 string json = File.ReadAllText(_filePath);
+                List<AuthorizationSessionSnapshot>? snapshots = JsonSerializer.Deserialize<List<AuthorizationSessionSnapshot>>(json);
+                if (snapshots != null)
+                {
+                    return snapshots.Where(IsValidSnapshot).ToList();
+                }
+
                 AuthorizationSessionSnapshot? snapshot = JsonSerializer.Deserialize<AuthorizationSessionSnapshot>(json);
-
-                if (snapshot == null ||
-                    !snapshot.Active ||
-                    string.IsNullOrWhiteSpace(snapshot.BoundUserId) ||
-                    string.IsNullOrWhiteSpace(snapshot.AccountId) ||
-                    string.IsNullOrWhiteSpace(snapshot.DesktopId))
+                if (snapshot != null && IsValidSnapshot(snapshot))
                 {
-                    return null;
+                    return new List<AuthorizationSessionSnapshot> { snapshot };
                 }
 
-                if (snapshot.ExpiresAtUtc.HasValue && snapshot.ExpiresAtUtc.Value <= DateTimeOffset.UtcNow)
-                {
-                    return null;
-                }
-
-                return snapshot;
+                return new List<AuthorizationSessionSnapshot>();
             }
             catch
             {
-                return null;
+                return new List<AuthorizationSessionSnapshot>();
             }
         }
 
         private void SaveAuthorizationSession()
         {
-            string json = JsonSerializer.Serialize(_snapshot);
+            List<AuthorizationSessionSnapshot> activeSnapshots = GetActiveSnapshotsCore();
+
+            if (activeSnapshots.Count == 0)
+            {
+                if (File.Exists(_filePath))
+                {
+                    File.Delete(_filePath);
+                }
+
+                return;
+            }
+
+            string json = JsonSerializer.Serialize(activeSnapshots);
             File.WriteAllText(_filePath, json);
         }
 
-        private bool TryGetSnapshotCore(out AuthorizationSessionSnapshot? snapshot)
+        private List<AuthorizationSessionSnapshot> GetActiveSnapshotsCore()
         {
-            snapshot = _snapshot;
+            bool removedExpired = _snapshots.RemoveAll(snapshot => !IsValidSnapshot(snapshot)) > 0;
 
-            if (snapshot == null ||
-                !snapshot.Active ||
-                string.IsNullOrWhiteSpace(snapshot.BoundUserId) ||
-                string.IsNullOrWhiteSpace(snapshot.AccountId) ||
-                string.IsNullOrWhiteSpace(snapshot.DesktopId))
+            if (removedExpired)
             {
-                snapshot = null;
-                return false;
+                SaveAuthorizationSession();
             }
 
-            if (snapshot.ExpiresAtUtc.HasValue && snapshot.ExpiresAtUtc.Value <= DateTimeOffset.UtcNow)
-            {
-                ClearAuthorizationSession();
-                snapshot = null;
-                return false;
-            }
-
-            return true;
+            return _snapshots;
         }
 
-        private void ClearAuthorizationSession()
+        private void ClearAuthorizationSessions()
         {
-            _snapshot = null;
+            _snapshots.Clear();
 
             if (File.Exists(_filePath))
             {
                 File.Delete(_filePath);
             }
+        }
+
+        private static bool IsValidSnapshot(AuthorizationSessionSnapshot snapshot)
+        {
+            if (!snapshot.Active ||
+                string.IsNullOrWhiteSpace(snapshot.BoundUserId) ||
+                string.IsNullOrWhiteSpace(snapshot.BaseUrl) ||
+                string.IsNullOrWhiteSpace(snapshot.AccountId) ||
+                string.IsNullOrWhiteSpace(snapshot.DesktopId))
+            {
+                return false;
+            }
+
+            return !snapshot.ExpiresAtUtc.HasValue || snapshot.ExpiresAtUtc.Value > DateTimeOffset.UtcNow;
+        }
+
+        private static string NormalizeBaseUrl(string baseUrl)
+        {
+            return string.IsNullOrWhiteSpace(baseUrl)
+                ? string.Empty
+                : baseUrl.TrimEnd('/');
         }
     }
 }

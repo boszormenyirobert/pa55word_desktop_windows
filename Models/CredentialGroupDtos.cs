@@ -22,8 +22,8 @@ namespace TrayApp.Models
         [JsonPropertyName("accountId")]
         public string AccountId { get; set; } = string.Empty;
 
-        [JsonPropertyName("deviceId")]
-        public string DeviceId { get; set; } = string.Empty;
+        [JsonPropertyName("desktopDeviceId")]
+        public string DesktopDeviceId { get; set; } = string.Empty;
 
         [JsonPropertyName("groupId")]
         public string GroupId { get; set; } = string.Empty;
@@ -40,8 +40,8 @@ namespace TrayApp.Models
         [JsonPropertyName("accountId")]
         public string AccountId { get; set; } = string.Empty;
 
-        [JsonPropertyName("deviceId")]
-        public string DeviceId { get; set; } = string.Empty;
+        [JsonPropertyName("desktopDeviceId")]
+        public string DesktopDeviceId { get; set; } = string.Empty;
 
         [JsonPropertyName("groupId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -59,8 +59,8 @@ namespace TrayApp.Models
         [JsonPropertyName("accountId")]
         public string AccountId { get; set; } = string.Empty;
 
-        [JsonPropertyName("deviceId")]
-        public string DeviceId { get; set; } = string.Empty;
+        [JsonPropertyName("desktopDeviceId")]
+        public string DesktopDeviceId { get; set; } = string.Empty;
 
         [JsonPropertyName("groupId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

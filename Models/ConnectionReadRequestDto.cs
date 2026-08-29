@@ -7,8 +7,8 @@ namespace TrayApp.Models
         [JsonPropertyName("accountId")]
         public string AccountId { get; set; } = string.Empty;
 
-        [JsonPropertyName("deviceId")]
-        public string DeviceId { get; set; } = string.Empty;
+        [JsonPropertyName("desktopDeviceId")]
+        public string DesktopDeviceId { get; set; } = string.Empty;
 
         [JsonPropertyName("deviceName")]
         public string DeviceName { get; set; } = string.Empty;

@@ -34,6 +34,24 @@ namespace TrayApp.Services
 
         public bool IsAuthorized => _authorizationSessionStore.IsAuthorized;
 
+        public bool IsAuthorizedForActiveNamespace
+        {
+            get
+            {
+                try
+                {
+                    AuthorizationContext activeNamespaceContext = CreateActiveNamespaceAuthorizationContext();
+                    return _authorizationSessionStore.HasActiveSessionForNamespace(
+                        activeNamespaceContext.UserId,
+                        activeNamespaceContext.NamespaceId);
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
         public async Task<bool> HasValidCredentialForActiveNamespaceAsync()
         {
             AuthorizationContext loginContext = CreateAuthorizationContext();
@@ -48,7 +66,7 @@ namespace TrayApp.Services
             if (!hasCredential)
             {
                 _log?.Invoke(
-                    $"[AUTH] Active namespace credential check failed. accountId='{activeNamespaceContext.AccountId}', deviceId='{activeNamespaceContext.DeviceId}'.");
+                    $"[AUTH] Active namespace credential check failed. accountId='{activeNamespaceContext.AccountId}', desktopDeviceId='{activeNamespaceContext.DesktopDeviceId}'.");
                 NotifyAuthorizationStatus("The selected namespace does not have an active backend credential for this user.", ToolTipIcon.Warning);
             }
 
@@ -97,7 +115,7 @@ namespace TrayApp.Services
                 bool authorized = await RequestAuthorizationAsync(context).ConfigureAwait(false);
                 if (!authorized)
                 {
-                    _authorizationSessionStore.Revoke();
+                    RevokeAuthorization(context);
                     _log?.Invoke("[AUTH] Authorization failed. Session revoked.");
                     NotifyAuthorizationStatus("Login failed. Mobile approval was declined or the session no longer exists.", ToolTipIcon.Error);
                     return false;
@@ -110,7 +128,7 @@ namespace TrayApp.Services
                     return true;
                 }
 
-                _authorizationSessionStore.Revoke();
+                RevokeAuthorization(context);
                 _log?.Invoke("[AUTH] Authorization succeeded but no active attestation was found.");
                 NotifyAuthorizationStatus("Login completed but no active desktop attestation was found.", ToolTipIcon.Error);
                 return false;
@@ -123,44 +141,96 @@ namespace TrayApp.Services
 
         public async Task<AuthorizationHealthResult> CheckAuthorizationStateAsync()
         {
-            AuthorizationContext loginContext = CreateAuthorizationContext();
             AuthorizationContext activeNamespaceContext = CreateActiveNamespaceAuthorizationContext();
             IReadOnlyList<AuthorizationContext> knownContexts = CreateAuthorizationContexts();
-            AuthorizationContext? storedContext = FindStoredAuthorizationContext(knownContexts);
+            bool anyActiveSession = false;
+            AuthorizationHealthResult? activeNamespaceHealth = null;
+            string? transientReason = null;
 
-            if (storedContext == null)
+            foreach (AuthorizationContext context in knownContexts)
             {
-                return AuthorizationHealthResult.Invalid("authorization_missing");
+                bool isActiveNamespaceContext = ContextsMatch(context, activeNamespaceContext);
+                string inactiveReason = isActiveNamespaceContext
+                    ? "active_namespace_credential_missing"
+                    : "authorization_revoked";
+
+                AuthorizationHealthResult health = await CheckAuthorizationContextHealthAsync(
+                    context,
+                    persistSession: true,
+                    inactiveReason: inactiveReason).ConfigureAwait(false);
+
+                if (health.Authorized)
+                {
+                    anyActiveSession = true;
+                }
+                else if (health.ExplicitlyInvalid)
+                {
+                    RevokeAuthorization(context);
+                }
+                else if (health.TransientFailure && string.IsNullOrWhiteSpace(transientReason))
+                {
+                    transientReason = health.Reason;
+                }
+
+                if (isActiveNamespaceContext)
+                {
+                    activeNamespaceHealth = health;
+                }
             }
 
-            AuthorizationHealthResult loginHealth = await CheckAuthorizationContextHealthAsync(
-                storedContext,
-                persistSession: true,
-                inactiveReason: "authorization_revoked").ConfigureAwait(false);
-
-            if (!loginHealth.Authorized)
+            if (activeNamespaceHealth == null)
             {
-                return loginHealth;
+                activeNamespaceHealth = await CheckAuthorizationContextHealthAsync(
+                    activeNamespaceContext,
+                    persistSession: true,
+                    inactiveReason: "active_namespace_credential_missing").ConfigureAwait(false);
+
+                if (activeNamespaceHealth.Authorized)
+                {
+                    anyActiveSession = true;
+                }
+                else if (activeNamespaceHealth.ExplicitlyInvalid)
+                {
+                    RevokeAuthorization(activeNamespaceContext);
+                }
+                else if (activeNamespaceHealth.TransientFailure && string.IsNullOrWhiteSpace(transientReason))
+                {
+                    transientReason = activeNamespaceHealth.Reason;
+                }
             }
 
-            if (ContextsMatch(loginContext, activeNamespaceContext))
+            if (anyActiveSession)
             {
                 return AuthorizationHealthResult.Active();
             }
 
-            AuthorizationHealthResult activeNamespaceHealth = await CheckAuthorizationContextHealthAsync(
-                activeNamespaceContext,
-                persistSession: false,
-                inactiveReason: "active_namespace_credential_missing").ConfigureAwait(false);
+            if (activeNamespaceHealth.TransientFailure)
+            {
+                return activeNamespaceHealth;
+            }
 
-            return activeNamespaceHealth.Authorized
-                ? AuthorizationHealthResult.Active()
-                : activeNamespaceHealth;
+            if (!string.IsNullOrWhiteSpace(transientReason))
+            {
+                return AuthorizationHealthResult.Transient(transientReason);
+            }
+
+            if (activeNamespaceHealth.ExplicitlyInvalid)
+            {
+                return activeNamespaceHealth;
+            }
+
+            return AuthorizationHealthResult.Invalid("authorization_missing");
         }
 
         public void RevokeAuthorization()
         {
             _authorizationSessionStore.Revoke();
+        }
+
+        public void RevokeAuthorizationForActiveNamespace()
+        {
+            AuthorizationContext context = CreateActiveNamespaceAuthorizationContext();
+            RevokeAuthorization(context);
         }
 
         public async Task<bool> LogoutAsync()
@@ -190,6 +260,50 @@ namespace TrayApp.Services
             return remoteSuccess;
         }
 
+        public async Task<bool> LogoutActiveNamespaceAsync()
+        {
+            AuthorizationContext context = CreateActiveNamespaceAuthorizationContext();
+            bool remoteSuccess = true;
+
+            try
+            {
+                remoteSuccess = await RevokeActiveAttestationAsync(context).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                remoteSuccess = false;
+                _log?.Invoke($"[AUTH] Selected namespace logout revoke failed: {ex.Message}");
+            }
+            finally
+            {
+                RevokeAuthorization(context);
+            }
+
+            return remoteSuccess;
+        }
+
+        public async Task<bool> LogoutNamespaceAsync(string userId, string namespaceId)
+        {
+            AuthorizationContext context = FindAuthorizationContext(userId, namespaceId);
+            bool remoteSuccess = true;
+
+            try
+            {
+                remoteSuccess = await RevokeActiveAttestationAsync(context).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                remoteSuccess = false;
+                _log?.Invoke($"[AUTH] Namespace logout revoke failed. namespaceId='{namespaceId}': {ex.Message}");
+            }
+            finally
+            {
+                RevokeAuthorization(context);
+            }
+
+            return remoteSuccess;
+        }
+
         private async Task<bool> RequestAuthorizationAsync(AuthorizationContext context)
         {
             try
@@ -199,19 +313,20 @@ namespace TrayApp.Services
                 string nonce = NonceGenerator.Create();
 
                 _log?.Invoke(
-                    $"[AUTH] Request start. Endpoint='{authEndpoint}', activeNamespaceId='{activeNamespaceId}', accountId='{context.AccountId}', deviceId='{context.DeviceId}'.");
+                    $"[AUTH] Request start. Endpoint='{authEndpoint}', activeNamespaceId='{activeNamespaceId}', accountId='{context.AccountId}', desktopDeviceId='{context.DesktopDeviceId}'.");
 
                 var authenticationPayload = new AuthenticationRequestDto
                 {
+                    NamespaceId = context.NamespaceId,
                     AccountId = context.AccountId,
-                    DeviceId = context.DeviceId,
+                    DesktopDeviceId = context.DesktopDeviceId,
                     Nonce = nonce
                 };
 
                 string payloadJson = JsonSerializer.Serialize(authenticationPayload);
 
                 IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
-                    context.DeviceId,
+                    context.DesktopDeviceId,
                     payloadJson,
                     "authentication request");
 
@@ -287,21 +402,22 @@ namespace TrayApp.Services
 
             var statusPayload = new
             {
+                namespaceId = context.NamespaceId,
                 accountId = context.AccountId,
-                deviceId = context.DeviceId,
+                desktopDeviceId = context.DesktopDeviceId,
                 notificationId,
                 nonce = NonceGenerator.Create()
             };
 
             string payloadJson = JsonSerializer.Serialize(statusPayload);
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
-                context.DeviceId,
+                context.DesktopDeviceId,
                 payloadJson,
                 "authentication status request");
 
             string statusEndpoint = AppEnvironment.BuildApiUrl(
                 context.BaseUrl,
-                ApiRoutes.AuthenticationStatusNotification(context.AccountId, context.DeviceId, notificationId, statusPayload.nonce));
+                ApiRoutes.AuthenticationStatusNotification(context.AccountId, context.DesktopDeviceId, notificationId, statusPayload.nonce, context.NamespaceId));
             _log?.Invoke($"[AUTH] Listening for status updates. Endpoint='{statusEndpoint}'.");
 
             try
@@ -379,20 +495,13 @@ namespace TrayApp.Services
         private async Task<bool> CheckActiveAttestationAsync(AuthorizationContext context, bool persistSession)
         {
             string nonce = NonceGenerator.Create();
-            var payload = new AuthenticationRequestDto
-            {
-                AccountId = context.AccountId,
-                DeviceId = context.DeviceId,
-                Nonce = nonce
-            };
-
-            string payloadJson = JsonSerializer.Serialize(payload);
+            string payloadJson = BuildAuthenticationStatePayloadJson(context, nonce);
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
-                context.DeviceId,
+                context.DesktopDeviceId,
                 payloadJson,
                 "authentication state request");
 
-            string endpoint = AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AuthenticationState(context.AccountId, context.DeviceId, nonce));
+            string endpoint = AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AuthenticationState(context.AccountId, context.DesktopDeviceId, nonce, context.NamespaceId));
 
             try
             {
@@ -412,11 +521,13 @@ namespace TrayApp.Services
                         ? context.AccountId
                         : attestation.AccountId!;
                     string boundDesktopId = string.IsNullOrWhiteSpace(attestation?.DesktopId)
-                        ? context.DeviceId
+                        ? context.DesktopDeviceId
                         : attestation.DesktopId!;
 
                     _authorizationSessionStore.SaveActive(
                         context.UserId,
+                        context.NamespaceId,
+                        context.BaseUrl,
                         boundAccountId,
                         boundDesktopId,
                         attestation?.ExpiresAt,
@@ -433,26 +544,53 @@ namespace TrayApp.Services
             }
         }
 
+        public async Task<bool> EnsureAuthorizedForActiveNamespaceAsync(bool allowInteractiveLogin = true)
+        {
+            AuthorizationContext activeNamespaceContext = CreateActiveNamespaceAuthorizationContext();
+
+            if (await TryEnsureAuthorizationContextAsync(
+                    activeNamespaceContext,
+                    allowInteractiveLogin,
+                    notifyOnExpiredSession: true,
+                    logReuseMessage: "[AUTH] Reusing active attestation for the selected namespace.",
+                    logFoundMessage: "[AUTH] Found an active attestation for the selected namespace.")
+                .ConfigureAwait(false))
+            {
+                return true;
+            }
+
+            await _authenticationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                activeNamespaceContext = CreateActiveNamespaceAuthorizationContext();
+
+                return await TryEnsureAuthorizationContextAsync(
+                        activeNamespaceContext,
+                        allowInteractiveLogin,
+                        notifyOnExpiredSession: false,
+                        logReuseMessage: "[AUTH] Reusing selected namespace attestation after lock.",
+                        logFoundMessage: "[AUTH] Found an active attestation for the selected namespace after lock.")
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                _authenticationLock.Release();
+            }
+        }
+
         private async Task<AuthorizationHealthResult> CheckAuthorizationContextHealthAsync(
             AuthorizationContext context,
             bool persistSession,
             string inactiveReason)
         {
             string nonce = NonceGenerator.Create();
-            var payload = new AuthenticationRequestDto
-            {
-                AccountId = context.AccountId,
-                DeviceId = context.DeviceId,
-                Nonce = nonce
-            };
-
-            string payloadJson = JsonSerializer.Serialize(payload);
+            string payloadJson = BuildAuthenticationStatePayloadJson(context, nonce);
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
-                context.DeviceId,
+                context.DesktopDeviceId,
                 payloadJson,
                 "authentication state request");
 
-            string endpoint = AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AuthenticationState(context.AccountId, context.DeviceId, nonce));
+            string endpoint = AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AuthenticationState(context.AccountId, context.DesktopDeviceId, nonce, context.NamespaceId));
 
             try
             {
@@ -472,11 +610,13 @@ namespace TrayApp.Services
                         ? context.AccountId
                         : attestation.AccountId!;
                     string boundDesktopId = string.IsNullOrWhiteSpace(attestation?.DesktopId)
-                        ? context.DeviceId
+                        ? context.DesktopDeviceId
                         : attestation.DesktopId!;
 
                     _authorizationSessionStore.SaveActive(
                         context.UserId,
+                        context.NamespaceId,
+                        context.BaseUrl,
                         boundAccountId,
                         boundDesktopId,
                         attestation?.ExpiresAt,
@@ -498,23 +638,23 @@ namespace TrayApp.Services
         private async Task<bool> RevokeActiveAttestationAsync(AuthorizationContext context)
         {
             string nonce = NonceGenerator.Create();
-            var payload = new AuthenticationRequestDto
+            var payload = new
             {
-                AccountId = context.AccountId,
-                DeviceId = context.DeviceId,
-                Nonce = nonce
+                accountId = context.AccountId,
+                desktopDeviceId = context.DesktopDeviceId,
+                nonce,
             };
 
             string payloadJson = JsonSerializer.Serialize(payload);
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
-                context.DeviceId,
+                context.DesktopDeviceId,
                 payloadJson,
                 "authentication revoke request");
 
-            string endpoint = AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AuthenticationRevoke(context.AccountId, context.DeviceId, nonce));
+            string endpoint = AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AuthenticationRevoke(context.AccountId, context.DesktopDeviceId, nonce, context.NamespaceId));
 
             AuthenticationRevokeResponseDto? response = await _httpApiClient
-                .DeleteJsonAsync<AuthenticationRequestDto, AuthenticationRevokeResponseDto>(endpoint, payload, headers)
+                .DeleteJsonAsync<object, AuthenticationRevokeResponseDto>(endpoint, payload, headers)
                 .ConfigureAwait(false);
 
             if (response != null && !response.Success)
@@ -526,15 +666,96 @@ namespace TrayApp.Services
             return true;
         }
 
+        private static string BuildAuthenticationStatePayloadJson(AuthorizationContext context, string nonce)
+        {
+            var payload = new
+            {
+                accountId = context.AccountId,
+                desktopDeviceId = context.DesktopDeviceId,
+                namespaceId = context.NamespaceId,
+                nonce,
+            };
+
+            return JsonSerializer.Serialize(payload);
+        }
+
+        private async Task<bool> TryEnsureAuthorizationContextAsync(
+            AuthorizationContext context,
+            bool allowInteractiveLogin,
+            bool notifyOnExpiredSession,
+            string logReuseMessage,
+            string logFoundMessage)
+        {
+            if (_authorizationSessionStore.Matches(context.UserId, context.AccountId, context.DesktopDeviceId, context.BaseUrl))
+            {
+                AuthorizationHealthResult storedHealth = await CheckAuthorizationContextHealthAsync(
+                    context,
+                    persistSession: true,
+                    inactiveReason: "authorization_revoked").ConfigureAwait(false);
+
+                if (storedHealth.Authorized)
+                {
+                    _log?.Invoke(logReuseMessage);
+                    return true;
+                }
+
+                RevokeAuthorization(context);
+                _log?.Invoke("[AUTH] Cached selected namespace attestation was no longer active.");
+
+                if (notifyOnExpiredSession)
+                {
+                    NotifyAuthorizationStatus("Desktop attestation expired. Log in again.", ToolTipIcon.Warning);
+                }
+            }
+
+            AuthorizationHealthResult activeHealth = await CheckAuthorizationContextHealthAsync(
+                context,
+                persistSession: true,
+                inactiveReason: "active_namespace_credential_missing").ConfigureAwait(false);
+
+            if (activeHealth.Authorized)
+            {
+                _log?.Invoke(logFoundMessage);
+                return true;
+            }
+
+            if (!allowInteractiveLogin)
+            {
+                return false;
+            }
+
+            bool authorized = await RequestAuthorizationAsync(context).ConfigureAwait(false);
+            if (!authorized)
+            {
+                RevokeAuthorization(context);
+                _log?.Invoke("[AUTH] Selected namespace authorization failed. Session revoked.");
+                NotifyAuthorizationStatus("Login failed. Mobile approval was declined or the session no longer exists.", ToolTipIcon.Error);
+                return false;
+            }
+
+            bool attestationActive = await CheckActiveAttestationAsync(context, persistSession: true).ConfigureAwait(false);
+            if (attestationActive)
+            {
+                _log?.Invoke("[AUTH] Selected namespace authorization succeeded. Active attestation confirmed.");
+                return true;
+            }
+
+            RevokeAuthorization(context);
+            _log?.Invoke("[AUTH] Selected namespace authorization succeeded but no active attestation was found.");
+            NotifyAuthorizationStatus("Login completed but no active desktop attestation was found.", ToolTipIcon.Error);
+            return false;
+        }
+
         private AuthorizationContext CreateAuthorizationContext()
         {
             DesktopRegistration registration = _registeredDeviceService.ReadRegistration();
             string userId = registration.UserKey;
+            string namespaceId = registration.Namespaces.FirstOrDefault()?.NamespaceId ?? string.Empty;
             string accountId = AppEnvironment.GetPrimaryNamespaceAccountIdOrDefault(registration.AccountId);
-            string deviceId = AppEnvironment.GetPrimaryNamespaceDeviceIdOrDefault(registration.DeviceId);
+            string desktopDeviceId = AppEnvironment.GetPrimaryNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
             string baseUrl = AppEnvironment.GetPrimaryNamespaceUrlOrDefault(AppEnvironment.BackendBaseUrl);
 
-            return new AuthorizationContext(userId, accountId, deviceId, baseUrl);
+            return new AuthorizationContext(userId, namespaceId, accountId, desktopDeviceId, baseUrl);
         }
 
         private IReadOnlyList<AuthorizationContext> CreateAuthorizationContexts()
@@ -550,18 +771,21 @@ namespace TrayApp.Services
                 string accountId = string.IsNullOrWhiteSpace(namespaceItem.AccountId)
                     ? registration.AccountId
                     : namespaceItem.AccountId;
-                string deviceId = string.IsNullOrWhiteSpace(namespaceItem.DeviceId)
-                    ? registration.DeviceId
-                    : namespaceItem.DeviceId;
+                string desktopDeviceId = string.IsNullOrWhiteSpace(namespaceItem.DesktopDeviceId)
+                    ? registration.DesktopDeviceId
+                    : namespaceItem.DesktopDeviceId;
                 string baseUrl = string.IsNullOrWhiteSpace(namespaceItem.Url)
                     ? AppEnvironment.BackendBaseUrl
                     : namespaceItem.Url.TrimEnd('/');
 
-                contexts.Add(new AuthorizationContext(registration.UserKey, accountId, deviceId, baseUrl));
+                contexts.Add(new AuthorizationContext(registration.UserKey, namespaceItem.NamespaceId, accountId, desktopDeviceId, baseUrl));
             }
 
             return contexts
-                .GroupBy(context => $"{context.AccountId}|{context.DeviceId}|{context.BaseUrl}", StringComparer.OrdinalIgnoreCase)
+                .GroupBy(context => string.IsNullOrWhiteSpace(context.NamespaceId)
+                    ? $"{context.AccountId}|{context.DesktopDeviceId}|{context.BaseUrl}"
+                    : context.NamespaceId,
+                    StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .ToArray();
         }
@@ -570,11 +794,26 @@ namespace TrayApp.Services
         {
             DesktopRegistration registration = _registeredDeviceService.ReadRegistration();
             string userId = registration.UserKey;
+            string namespaceId = AppEnvironment.GetActiveNamespaceId() ?? string.Empty;
             string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string deviceId = AppEnvironment.GetActiveNamespaceDeviceIdOrDefault(registration.DeviceId);
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
             string baseUrl = AppEnvironment.GetActiveNamespaceUrlOrDefault(AppEnvironment.BackendBaseUrl);
 
-            return new AuthorizationContext(userId, accountId, deviceId, baseUrl);
+            return new AuthorizationContext(userId, namespaceId, accountId, desktopDeviceId, baseUrl);
+        }
+
+        private AuthorizationContext FindAuthorizationContext(string userId, string namespaceId)
+        {
+            AuthorizationContext? context = CreateAuthorizationContexts().FirstOrDefault(item =>
+                string.Equals(item.UserId, userId, StringComparison.Ordinal) &&
+                string.Equals(item.NamespaceId, namespaceId, StringComparison.OrdinalIgnoreCase));
+
+            if (context == null)
+            {
+                throw new InvalidOperationException($"Authorization context not found for namespace '{namespaceId}'.");
+            }
+
+            return context;
         }
 
         private static bool IsAuthorizationAccepted(AuthenticationResponseDto response)
@@ -599,7 +838,7 @@ namespace TrayApp.Services
         {
             return string.Equals(left.UserId, right.UserId, StringComparison.Ordinal) &&
                    string.Equals(left.AccountId, right.AccountId, StringComparison.Ordinal) &&
-                   string.Equals(left.DeviceId, right.DeviceId, StringComparison.Ordinal) &&
+                   string.Equals(left.DesktopDeviceId, right.DesktopDeviceId, StringComparison.Ordinal) &&
                    string.Equals(left.BaseUrl, right.BaseUrl, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -624,7 +863,7 @@ namespace TrayApp.Services
                 return true;
             }
 
-            _authorizationSessionStore.Revoke();
+            RevokeAuthorization(storedContext);
             _log?.Invoke("[AUTH] Cached attestation was no longer active.");
 
             if (notifyOnExpiredSession)
@@ -656,7 +895,18 @@ namespace TrayApp.Services
         private AuthorizationContext? FindStoredAuthorizationContext(IReadOnlyList<AuthorizationContext> contexts)
         {
             return contexts.FirstOrDefault(context =>
-                _authorizationSessionStore.Matches(context.UserId, context.AccountId, context.DeviceId));
+                _authorizationSessionStore.Matches(context.UserId, context.AccountId, context.DesktopDeviceId, context.BaseUrl));
+        }
+
+        private void RevokeAuthorization(AuthorizationContext context)
+        {
+            if (!string.IsNullOrWhiteSpace(context.NamespaceId))
+            {
+                _authorizationSessionStore.Revoke(context.UserId, context.NamespaceId);
+                return;
+            }
+
+            _authorizationSessionStore.Revoke(context.UserId, context.AccountId, context.DesktopDeviceId, context.BaseUrl);
         }
 
         private void NotifyAuthorizationStatus(string? message, ToolTipIcon icon)
@@ -684,6 +934,6 @@ namespace TrayApp.Services
             return "Login failed. Mobile approval did not complete.";
         }
 
-        private sealed record AuthorizationContext(string UserId, string AccountId, string DeviceId, string BaseUrl);
+        private sealed record AuthorizationContext(string UserId, string NamespaceId, string AccountId, string DesktopDeviceId, string BaseUrl);
     }
 }

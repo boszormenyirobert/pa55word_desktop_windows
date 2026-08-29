@@ -13,6 +13,12 @@ namespace TrayApp.Models
         [JsonPropertyName("credentialGroupId")]
         public int? CredentialGroupId { get; set; }
 
+        [JsonPropertyName("iv")]
+        public string Iv { get; set; } = string.Empty;
+
+        [JsonPropertyName("authTag")]
+        public string AuthTag { get; set; } = string.Empty;
+
         [JsonPropertyName("registry")]
         public string Registry { get; set; } = string.Empty;
 

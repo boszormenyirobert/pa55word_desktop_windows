@@ -18,6 +18,7 @@ namespace TrayApp.Models
     internal static class MessagingResource
     {
         public const string Credential = "credential";
+        public const string CredentialDetail = "credential-detail";
         public const string Group = "group";
         public const string Session = "session";
     }

@@ -4,11 +4,14 @@ namespace TrayApp.Models
 {
     internal sealed class AuthenticationRequestDto
     {
+        [JsonPropertyName("namespaceId")]
+        public string NamespaceId { get; set; } = string.Empty;
+
         [JsonPropertyName("accountId")]
         public string AccountId { get; set; } = string.Empty;
 
-        [JsonPropertyName("deviceId")]
-        public string DeviceId { get; set; } = string.Empty;
+        [JsonPropertyName("desktopDeviceId")]
+        public string DesktopDeviceId { get; set; } = string.Empty;
 
         [JsonPropertyName("nonce")]
         public string Nonce { get; set; } = string.Empty;

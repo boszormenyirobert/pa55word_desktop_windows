@@ -4,19 +4,40 @@ namespace TrayApp.TrayMenu.Views
     {
         public TrayMenuViewState Build(TrayMenuContext context)
         {
-            string serverList = context.RegisteredServers.Count > 0
-                ? string.Join(", ", context.RegisteredServers)
-                : "No registered servers.";
+            int serverCount = context.RegisteredServerDetails.Count;
+            string serverList = serverCount > 0 ? string.Empty : "No registered servers.";
+            int insightBodyHeight = serverCount > 0
+                ? Math.Clamp(serverCount * 150, 56, 330)
+                : 56;
 
             return new TrayMenuViewState
             {
                 Eyebrow = "SERVERS",
                 Title = "Registered servers",
-                Description = $"Active server: {context.ActiveServerLabel}",
-                InsightTitle = "Server list",
-                InsightBody = $"{serverList}\n\nUse Register new server to start namespace pairing for the active session.",
+                Description = $"All namespaces registered under {context.ActiveUserLabel}.",
+                InsightTitle = string.Empty,
+                InsightBody = serverList,
                 SelectionLayout = TrayMenuSelectionLayout.ServerSelector,
-                ConnectionMetricOverride = $"{context.RegisteredServerCount} server entr" + (context.RegisteredServerCount == 1 ? "y" : "ies")
+                InsightCardHeightOverride = insightBodyHeight + 34,
+                InsightBodyHeightOverride = insightBodyHeight,
+                HideMetricsCard = true,
+                HideInsightTitle = true,
+                RegisteredServerCards = context.RegisteredServerDetails
+                    .Select(item => new RegisteredServerCardViewState
+                    {
+                        UserId = item.UserId,
+                        NamespaceId = item.NamespaceId,
+                        NamespaceTitle = item.Namespace,
+                        HasSession = item.HasSession,
+                        IsRevoking = false,
+                        UserLabel = "User",
+                        UserValue = item.UserName,
+                        DeviceLabel = "device",
+                        DeviceValue = item.DeviceName,
+                        UrlLabel = "URL",
+                        UrlValue = item.Url
+                    })
+                    .ToArray()
             };
         }
     }

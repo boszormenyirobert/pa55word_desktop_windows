@@ -1,6 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -38,6 +38,7 @@ namespace TrayApp
         private readonly Label _quickPanelTitleLabel = new();
         private readonly Label _quickPanelStatusLabel = new();
         private readonly Label _quickPanelSummaryLabel = new();
+        private readonly FlowLayoutPanel _quickPanelServerStatusPanel = new();
         private readonly Label _quickPanelMenuSectionLabel = new();
         private readonly FlowLayoutPanel _quickPanelNavigationPanel = new();
         private readonly Button _quickPanelOverviewNavButton = new();
@@ -64,8 +65,11 @@ namespace TrayApp
         private readonly Panel _quickPanelInsightCard = new();
         private readonly Label _quickPanelInsightTitleLabel = new();
         private readonly Label _quickPanelInsightBodyLabel = new();
+        private readonly FlowLayoutPanel _quickPanelServerCardsPanel = new();
         private readonly Button _quickPanelRegisterUserInlineButton = new();
         private readonly Button _quickPanelServerRegistrationInlineButton = new();
+        private readonly Label _quickPanelServerStatusValueLabel = new();
+        private readonly Button _quickPanelServerLoginInlineButton = new();
         private readonly Label _quickPanelServerRegistrationUrlLabel = new();
         private readonly TextBox _quickPanelServerRegistrationUrlTextBox = new();
         private readonly Label _quickPanelServerRegistrationNameLabel = new();
@@ -115,6 +119,7 @@ namespace TrayApp
         private readonly TextBox _quickPanelManagedGroupNameTextBox = new();
         private readonly Label _quickPanelNewGroupNameLabel = new();
         private readonly TextBox _quickPanelNewGroupNameTextBox = new();
+        private string? _serverCardRevokingNamespaceId;
         private bool _updatingQuickPanelSelections;
         private bool _quickPanelRefreshInProgress;
         private string? _lastTrayMessage;
@@ -134,6 +139,8 @@ namespace TrayApp
         private string _selectedCredentialEntryId = string.Empty;
         private string _credentialCollectionCacheKey = string.Empty;
         private bool _credentialCollectionLoaded;
+        private bool _credentialDetailLoading;
+        private int _credentialDetailLoadRequestVersion;
         private CredentialWorkspaceMode _credentialWorkspaceMode = CredentialWorkspaceMode.ViewEntry;
         private bool _showInlineServerRegistration;
         private bool _inlineServerRegistrationSubmitting;
@@ -145,6 +152,7 @@ namespace TrayApp
         private string _selectedManagedGroupId = string.Empty;
         private IReadOnlyList<CredentialGroupDto> _credentialGroups = Array.Empty<CredentialGroupDto>();
         private IReadOnlyList<CredentialEntryListItem> _credentialEntries = Array.Empty<CredentialEntryListItem>();
+        private readonly Dictionary<int, CredentialEntryDetail> _credentialEntryDetails = new();
 
         private enum CredentialWorkspaceMode
         {
@@ -241,6 +249,20 @@ namespace TrayApp
             _quickPanelSummaryLabel.ForeColor = Color.FromArgb(171, 174, 211);
             _quickPanelSummaryLabel.Location = new Point(18, 112);
             _quickPanelSummaryLabel.Size = new Size(140, 56);
+
+            _quickPanelServerStatusPanel.FlowDirection = FlowDirection.TopDown;
+            _quickPanelServerStatusPanel.WrapContents = false;
+            _quickPanelServerStatusPanel.AutoSize = true;
+            _quickPanelServerStatusPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            _quickPanelServerStatusPanel.BackColor = Color.Transparent;
+            _quickPanelServerStatusPanel.Location = new Point(18, 78);
+            _quickPanelServerStatusPanel.Size = new Size(140, 88);
+            _quickPanelServerStatusPanel.MinimumSize = new Size(140, 0);
+            _quickPanelServerStatusPanel.MaximumSize = new Size(140, 1000);
+            _quickPanelServerStatusPanel.Margin = new Padding(0);
+
+            _quickPanelStatusLabel.Visible = false;
+            _quickPanelSummaryLabel.Visible = false;
 
             _quickPanelMenuSectionLabel.AutoSize = true;
             _quickPanelMenuSectionLabel.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
@@ -414,6 +436,8 @@ namespace TrayApp
             _quickPanelSelectionCard.Controls.Add(_quickPanelCredentialEntryCreateIconButton);
             _quickPanelSelectionCard.Controls.Add(_quickPanelRegisterUserInlineButton);
             _quickPanelSelectionCard.Controls.Add(_quickPanelServerRegistrationInlineButton);
+            _quickPanelSelectionCard.Controls.Add(_quickPanelServerStatusValueLabel);
+            _quickPanelSelectionCard.Controls.Add(_quickPanelServerLoginInlineButton);
 
             ConfigureQuickPanelSummaryValueLabel(_quickPanelHomeActiveUserLabel);
             ConfigureQuickPanelSummaryValueLabel(_quickPanelHomeActiveServerLabel);
@@ -450,12 +474,34 @@ namespace TrayApp
             _quickPanelInsightBodyLabel.Location = new Point(16, 42);
             _quickPanelInsightBodyLabel.Size = new Size(544, 56);
 
+            _quickPanelServerCardsPanel.AutoScroll = true;
+            _quickPanelServerCardsPanel.FlowDirection = FlowDirection.TopDown;
+            _quickPanelServerCardsPanel.WrapContents = false;
+            _quickPanelServerCardsPanel.BackColor = Color.Transparent;
+            _quickPanelServerCardsPanel.Location = new Point(16, 16);
+            _quickPanelServerCardsPanel.Size = new Size(544, 56);
+            _quickPanelServerCardsPanel.Margin = new Padding(0);
+            _quickPanelServerCardsPanel.Padding = new Padding(0);
+            _quickPanelServerCardsPanel.Visible = false;
+
             ConfigureQuickPanelInlineActionButton(_quickPanelRegisterUserInlineButton, "+ Register user", new Point(420, 12), quickPanelRegisterUserInlineButton_Click);
             _quickPanelRegisterUserInlineButton.Size = new Size(140, 28);
             _quickPanelRegisterUserInlineButton.ForeColor = Color.FromArgb(120, 205, 0);
 
             ConfigureQuickPanelInlineActionButton(_quickPanelServerRegistrationInlineButton, "+ Register new server", new Point(16, 14), quickPanelServerRegistrationInlineButton_Click);
+            _quickPanelServerRegistrationInlineButton.Size = new Size(156, 28);
             _quickPanelServerRegistrationInlineButton.ForeColor = Color.FromArgb(120, 205, 0);
+
+            _quickPanelServerStatusValueLabel.AutoSize = false;
+            _quickPanelServerStatusValueLabel.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
+            _quickPanelServerStatusValueLabel.Location = new Point(214, 16);
+            _quickPanelServerStatusValueLabel.Size = new Size(108, 24);
+            _quickPanelServerStatusValueLabel.TextAlign = ContentAlignment.MiddleCenter;
+            _quickPanelServerStatusValueLabel.Visible = false;
+
+            ConfigureQuickPanelInlineActionButton(_quickPanelServerLoginInlineButton, "Login", new Point(438, 14), quickPanelPrimaryActionButton_Click);
+            _quickPanelServerLoginInlineButton.Size = new Size(122, 28);
+            _quickPanelServerLoginInlineButton.Visible = false;
 
             ConfigureCredentialWorkspaceLabel(_quickPanelServerRegistrationUrlLabel, "Namespace url", new Point(16, 50));
             ConfigureCredentialWorkspaceTextBox(_quickPanelServerRegistrationUrlTextBox, new Point(16, 70), new Size(260, 25), multiline: false);
@@ -479,6 +525,7 @@ namespace TrayApp
 
             _quickPanelInsightCard.Controls.Add(_quickPanelInsightTitleLabel);
             _quickPanelInsightCard.Controls.Add(_quickPanelInsightBodyLabel);
+            _quickPanelInsightCard.Controls.Add(_quickPanelServerCardsPanel);
             _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationUrlLabel);
             _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationUrlTextBox);
             _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationNameLabel);
@@ -493,6 +540,7 @@ namespace TrayApp
             _quickPanelMenuPanel.Controls.Add(_quickPanelTitleLabel);
             _quickPanelMenuPanel.Controls.Add(_quickPanelStatusLabel);
             _quickPanelMenuPanel.Controls.Add(_quickPanelSummaryLabel);
+            _quickPanelMenuPanel.Controls.Add(_quickPanelServerStatusPanel);
             _quickPanelMenuPanel.Controls.Add(_quickPanelMenuSectionLabel);
             _quickPanelMenuPanel.Controls.Add(_quickPanelNavigationPanel);
             _quickPanelMenuPanel.Controls.Add(_quickPanelCollectionSectionLabel);
@@ -844,7 +892,7 @@ namespace TrayApp
         {
             _quickPanelContainer.Visible = true;
             SetRegistrationControlsVisible(false);
-            _quickPanelContainer.Size = new Size(760, 560);
+            _quickPanelContainer.Size = new Size(760, 660);
 
             if (_quickPanelHost != null)
             {
@@ -903,7 +951,7 @@ namespace TrayApp
 
             UpdateQuickPanelState();
 
-            if (_trayMenuController?.ActiveSection == TrayMenuSection.Credentials)
+            if (_trayMenuController?.ActiveSection == TrayMenuSection.Credentials && _authenticationService.IsAuthorizedForActiveNamespace)
             {
                 _ = EnsureCredentialCollectionLoadedAsync();
             }
@@ -1082,15 +1130,20 @@ namespace TrayApp
             }
 
             (string statusText, Color statusBackColor, Color statusForeColor) = ResolveTrayStatus();
+            (string activeNamespaceStatusText, Color activeNamespaceStatusBackColor, Color activeNamespaceStatusForeColor) = ResolveActiveNamespaceStatus();
 
             _quickPanelStatusLabel.Text = statusText;
             _quickPanelStatusLabel.BackColor = statusBackColor;
             _quickPanelStatusLabel.ForeColor = statusForeColor;
+            _quickPanelServerStatusValueLabel.Text = activeNamespaceStatusText;
+            _quickPanelServerStatusValueLabel.BackColor = activeNamespaceStatusBackColor;
+            _quickPanelServerStatusValueLabel.ForeColor = activeNamespaceStatusForeColor;
             _quickPanelSummaryLabel.Text = BuildQuickPanelSummary(statusText, activeNamespace);
+            RefreshQuickPanelServerStatusList(registration);
             LayoutQuickPanelMenuSections();
 
             _quickPanelAccountValueLabel.Text = registration?.DisplayUserName ?? "Not registered";
-            _quickPanelDeviceValueLabel.Text = registration?.DeviceId ?? "Waiting for pairing";
+            _quickPanelDeviceValueLabel.Text = registration?.DesktopDeviceId ?? "Waiting for pairing";
             _quickPanelConnectionValueLabel.Text = BuildConnectionSummary();
             _quickPanelLastUpdatedValueLabel.Text = _quickPanelRefreshInProgress
                 ? "Refreshing..."
@@ -1106,14 +1159,22 @@ namespace TrayApp
         private void ApplyQuickPanelSectionAvailability()
         {
             bool usersSectionEnabled = !_authenticationService.IsAuthorized;
+            bool credentialsSectionEnabled = _authenticationService.IsAuthorizedForActiveNamespace;
 
             if (!usersSectionEnabled && _trayMenuController?.ActiveSection == TrayMenuSection.Users)
             {
                 _trayMenuController.SetActiveSection(TrayMenuSection.Overview);
             }
 
+            if (!credentialsSectionEnabled && _trayMenuController?.ActiveSection == TrayMenuSection.Credentials)
+            {
+                _trayMenuController.SetActiveSection(TrayMenuSection.Servers);
+            }
+
             _quickPanelAccountsNavButton.Enabled = usersSectionEnabled;
             _quickPanelAccountsNavButton.Cursor = usersSectionEnabled ? Cursors.Hand : Cursors.Default;
+            _quickPanelCredentialsNavButton.Enabled = credentialsSectionEnabled;
+            _quickPanelCredentialsNavButton.Cursor = credentialsSectionEnabled ? Cursors.Hand : Cursors.Default;
 
             if (_trayMenuController == null)
             {
@@ -1153,6 +1214,11 @@ namespace TrayApp
             _quickPanelDetailDescriptionLabel.Text = viewState.Description;
             _quickPanelInsightTitleLabel.Text = viewState.InsightTitle;
             _quickPanelInsightBodyLabel.Text = viewState.InsightBody;
+            _quickPanelInsightTitleLabel.Visible = !viewState.HideInsightTitle;
+            _quickPanelInsightBodyLabel.Location = viewState.HideInsightTitle
+                ? new Point(16, 16)
+                : new Point(16, 42);
+            RenderRegisteredServerCards(viewState);
 
             if (!string.IsNullOrWhiteSpace(viewState.AccountMetricOverride))
             {
@@ -1192,25 +1258,91 @@ namespace TrayApp
             const int sectionGap = 15;
             const int labelToPanelGap = 24;
 
-            Size measuredSummarySize = TextRenderer.MeasureText(
-                _quickPanelSummaryLabel.Text ?? string.Empty,
-                _quickPanelSummaryLabel.Font,
-                new Size(_quickPanelSummaryLabel.Width, int.MaxValue),
-                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
-
-            int summaryHeight = Math.Max(40, measuredSummarySize.Height);
-            _quickPanelSummaryLabel.Size = new Size(_quickPanelSummaryLabel.Width, summaryHeight);
-
+            ApplyPreferredStackPanelHeight(_quickPanelServerStatusPanel);
             ApplyPreferredStackPanelHeight(_quickPanelNavigationPanel);
             ApplyPreferredStackPanelHeight(_quickPanelCollectionPanel);
             ApplyPreferredStackPanelHeight(_quickPanelActionPanel);
 
-            _quickPanelMenuSectionLabel.Location = new Point(18, _quickPanelSummaryLabel.Bottom + sectionGap);
+            _quickPanelMenuSectionLabel.Location = new Point(18, _quickPanelServerStatusPanel.Bottom + sectionGap);
             _quickPanelNavigationPanel.Location = new Point(18, _quickPanelMenuSectionLabel.Bottom + (labelToPanelGap - _quickPanelMenuSectionLabel.Height));
             _quickPanelCollectionSectionLabel.Location = new Point(18, _quickPanelNavigationPanel.Bottom + sectionGap);
             _quickPanelCollectionPanel.Location = new Point(18, _quickPanelCollectionSectionLabel.Bottom + (labelToPanelGap - _quickPanelCollectionSectionLabel.Height));
             _quickPanelActionSectionLabel.Location = new Point(18, _quickPanelCollectionPanel.Bottom + sectionGap);
             _quickPanelActionPanel.Location = new Point(18, _quickPanelActionSectionLabel.Bottom + (labelToPanelGap - _quickPanelActionSectionLabel.Height));
+        }
+
+        private void RefreshQuickPanelServerStatusList(DesktopRegistration? registration)
+        {
+            _quickPanelServerStatusPanel.SuspendLayout();
+            _quickPanelServerStatusPanel.Controls.Clear();
+
+            if (registration == null || registration.Namespaces.Count == 0)
+            {
+                _quickPanelServerStatusPanel.Controls.Add(CreateQuickPanelServerStatusRow("No servers", false, false));
+                _quickPanelServerStatusPanel.ResumeLayout();
+                return;
+            }
+
+            string? activeNamespaceId = AppEnvironment.GetActiveNamespaceId();
+
+            foreach (NamespaceItemDto namespaceItem in registration.Namespaces)
+            {
+                bool isConnected = _authorizationSessionStore.HasActiveSessionForNamespace(registration.UserKey, namespaceItem.NamespaceId);
+
+                string serverName = string.IsNullOrWhiteSpace(namespaceItem.Namespace)
+                    ? namespaceItem.Url
+                    : namespaceItem.Namespace;
+
+                bool isActive = string.Equals(namespaceItem.NamespaceId, activeNamespaceId, StringComparison.Ordinal);
+
+                _quickPanelServerStatusPanel.Controls.Add(CreateQuickPanelServerStatusRow(serverName, isConnected, isActive));
+            }
+
+            _quickPanelServerStatusPanel.ResumeLayout();
+        }
+
+        private static Control CreateQuickPanelServerStatusRow(string serverName, bool isConnected, bool isActive)
+        {
+            Panel rowPanel = new()
+            {
+                Size = new Size(140, 24),
+                Margin = new Padding(0, 0, 0, 6),
+                BackColor = Color.Transparent
+            };
+
+            Panel statusIndicator = new()
+            {
+                Size = new Size(10, 10),
+                Location = new Point(0, 7),
+                BackColor = isConnected ? Color.FromArgb(120, 205, 0) : Color.FromArgb(239, 68, 68)
+            };
+
+            Label serverNameLabel = new()
+            {
+                AutoSize = false,
+                Location = new Point(18, 2),
+                Size = new Size(94, 18),
+                Font = new Font("Segoe UI Semibold", 8.5F, FontStyle.Bold),
+                ForeColor = Color.White,
+                Text = serverName,
+                AutoEllipsis = true
+            };
+
+            Label activeLabel = new()
+            {
+                AutoSize = false,
+                Location = new Point(114, 2),
+                Size = new Size(26, 18),
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(120, 205, 0),
+                Text = isActive ? "ACT" : string.Empty,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+
+            rowPanel.Controls.Add(statusIndicator);
+            rowPanel.Controls.Add(serverNameLabel);
+            rowPanel.Controls.Add(activeLabel);
+            return rowPanel;
         }
 
         private static void ApplyPreferredStackPanelHeight(FlowLayoutPanel panel)
@@ -1240,13 +1372,25 @@ namespace TrayApp
                 StatusText = statusText,
                 ActiveUserLabel = activeUserLabel,
                 ActiveServerLabel = serverLabel,
-                DeviceId = registration?.DeviceId ?? "Waiting for pairing",
+                DesktopDeviceId = registration?.DesktopDeviceId ?? "Waiting for pairing",
                 ConnectionSummary = BuildConnectionSummary(),
                 LastUpdatedText = _quickPanelLastUpdatedValueLabel.Text,
                 RegisteredUserCount = registrationCount,
                 RegisteredServerCount = namespaceCount,
                 RegisteredUsers = registrations?.Select(item => item.DisplayUserName).ToArray() ?? Array.Empty<string>(),
                 RegisteredServers = registration?.Namespaces.Select(item => item.Namespace).ToArray() ?? Array.Empty<string>(),
+                RegisteredServerDetails = registration?.Namespaces
+                    .Select(item => new RegisteredServerDetail
+                    {
+                        UserId = registration.UserKey,
+                        NamespaceId = item.NamespaceId,
+                        UserName = registration.DisplayUserName,
+                        DeviceName = string.IsNullOrWhiteSpace(item.DeviceName) ? registration.DesktopDeviceId : item.DeviceName,
+                        Namespace = string.IsNullOrWhiteSpace(item.Namespace) ? "Unnamed namespace" : item.Namespace,
+                        Url = string.IsNullOrWhiteSpace(item.Url) ? "No url" : item.Url,
+                        HasSession = _authorizationSessionStore.HasActiveSessionForNamespace(registration.UserKey, item.NamespaceId)
+                    })
+                    .ToArray() ?? Array.Empty<RegisteredServerDetail>(),
                 CredentialGroupCount = _credentialGroups.Count,
                 CredentialEntryCount = _credentialEntries.Count,
                 FilteredCredentialEntryCount = filteredCredentialEntries.Count,
@@ -1267,6 +1411,7 @@ namespace TrayApp
             _quickPanelDetailDescriptionLabel.Text = viewState.Description;
             _quickPanelInsightTitleLabel.Text = viewState.InsightTitle;
             _quickPanelInsightBodyLabel.Text = viewState.InsightBody;
+            RenderRegisteredServerCards(viewState);
 
             bool credentialsLayout = viewState.SelectionLayout == TrayMenuSelectionLayout.CredentialSelectors;
             _quickPanelUserLabel.Text = credentialsLayout ? "Group" : "Active user";
@@ -1313,32 +1458,68 @@ namespace TrayApp
             bool showInlineRegistration = serversSectionActive && _showInlineServerRegistration;
             bool canStartRegistration = _authenticationService.IsAuthorized && !_authenticationInProgress;
             bool canRegisterUser = usersSectionActive && !_authenticationService.IsAuthorized && !_authenticationInProgress;
+            bool canLoginToActiveNamespace = !_authenticationService.IsAuthorizedForActiveNamespace && !_authenticationInProgress;
+            bool canLogoutFromSession = _authenticationService.IsAuthorized && !_authenticationInProgress;
 
             _quickPanelRegisterUserInlineButton.Visible = usersSectionActive && !credentialsSectionActive;
             _quickPanelRegisterUserInlineButton.Enabled = canRegisterUser;
             _quickPanelServerRegistrationInlineButton.Visible = serversSectionActive;
             _quickPanelServerRegistrationInlineButton.Enabled = !_inlineServerRegistrationAwaitingCompletion && !_inlineServerRegistrationSubmitting && canStartRegistration;
+            _quickPanelServerStatusValueLabel.Visible = serversSectionActive && !showInlineRegistration;
+            _quickPanelServerLoginInlineButton.Visible = serversSectionActive && !showInlineRegistration;
+            _quickPanelServerLoginInlineButton.Enabled = canLoginToActiveNamespace || canLogoutFromSession;
+            _quickPanelServerLoginInlineButton.Text = canLoginToActiveNamespace ? "Login" : "Logout";
             _quickPanelSelectionCard.Visible = true;
-            _quickPanelMetricsCard.Visible = !credentialsSectionActive;
+            _quickPanelMetricsCard.Visible = !credentialsSectionActive && !viewState.HideMetricsCard;
             _quickPanelMetricsCard.Location = new Point(32, 294);
-            _quickPanelInsightCard.Location = new Point(32, 424);
+            _quickPanelInsightCard.Location = viewState.HideMetricsCard
+                ? new Point(32, 294)
+                : new Point(32, 424);
+
+            if (canLoginToActiveNamespace && !_authenticationInProgress)
+            {
+                _quickPanelServerLoginInlineButton.BackColor = Color.FromArgb(120, 205, 0);
+                _quickPanelServerLoginInlineButton.ForeColor = Color.FromArgb(24, 30, 24);
+                _quickPanelServerLoginInlineButton.FlatAppearance.BorderColor = Color.FromArgb(120, 205, 0);
+            }
+            else if (canLogoutFromSession && !_authenticationInProgress)
+            {
+                _quickPanelServerLoginInlineButton.BackColor = Color.FromArgb(214, 88, 88);
+                _quickPanelServerLoginInlineButton.ForeColor = Color.White;
+                _quickPanelServerLoginInlineButton.FlatAppearance.BorderColor = Color.FromArgb(214, 88, 88);
+            }
+            else
+            {
+                _quickPanelServerLoginInlineButton.BackColor = Color.FromArgb(46, 48, 77);
+                _quickPanelServerLoginInlineButton.ForeColor = Color.White;
+                _quickPanelServerLoginInlineButton.FlatAppearance.BorderColor = Color.FromArgb(46, 48, 77);
+            }
 
             if (credentialsSectionActive)
             {
                 _quickPanelRegisterUserInlineButton.Visible = false;
                 _quickPanelServerRegistrationInlineButton.Visible = false;
+                _quickPanelServerStatusValueLabel.Visible = false;
+                _quickPanelServerLoginInlineButton.Visible = false;
                 SetServerRegistrationControlsVisible(false);
                 return;
             }
 
             if (!serversSectionActive)
             {
-                _quickPanelInsightCard.Size = new Size(578, 110);
+                _quickPanelInsightCard.Size = new Size(578, viewState.InsightCardHeightOverride ?? 110);
                 _quickPanelInsightTitleLabel.Text = viewState.InsightTitle;
                 _quickPanelInsightBodyLabel.Text = viewState.InsightBody;
-                _quickPanelInsightBodyLabel.Size = new Size(544, 56);
-                _quickPanelInsightBodyLabel.Visible = true;
+                _quickPanelInsightBodyLabel.Size = new Size(544, viewState.InsightBodyHeightOverride ?? 56);
+                _quickPanelInsightTitleLabel.Visible = !viewState.HideInsightTitle;
+                _quickPanelInsightBodyLabel.Location = viewState.HideInsightTitle
+                    ? new Point(16, 16)
+                    : new Point(16, 42);
+                _quickPanelInsightBodyLabel.Visible = viewState.RegisteredServerCards.Count == 0;
+                _quickPanelServerCardsPanel.Visible = viewState.RegisteredServerCards.Count > 0;
                 _quickPanelServerRegistrationInlineButton.Visible = false;
+                _quickPanelServerStatusValueLabel.Visible = false;
+                _quickPanelServerLoginInlineButton.Visible = false;
                 SetServerRegistrationControlsVisible(false);
                 return;
             }
@@ -1349,14 +1530,22 @@ namespace TrayApp
                 _quickPanelNamespaceLabel.Location = new Point(16, 50);
                 _quickPanelNamespaceComboBox.Location = new Point(16, 72);
                 _quickPanelNamespaceComboBox.Size = new Size(544, 25);
-                _quickPanelInsightCard.Size = new Size(578, 110);
+                _quickPanelInsightCard.Size = new Size(578, viewState.InsightCardHeightOverride ?? 110);
                 _quickPanelInsightTitleLabel.Text = viewState.InsightTitle;
                 _quickPanelInsightBodyLabel.Text = viewState.InsightBody;
-                _quickPanelInsightBodyLabel.Size = new Size(544, 56);
-                _quickPanelInsightBodyLabel.Visible = true;
+                _quickPanelInsightBodyLabel.Size = new Size(544, viewState.InsightBodyHeightOverride ?? 56);
+                _quickPanelInsightTitleLabel.Visible = !viewState.HideInsightTitle;
+                _quickPanelInsightBodyLabel.Location = viewState.HideInsightTitle
+                    ? new Point(16, 16)
+                    : new Point(16, 42);
+                _quickPanelInsightBodyLabel.Visible = viewState.RegisteredServerCards.Count == 0;
+                _quickPanelServerCardsPanel.Visible = viewState.RegisteredServerCards.Count > 0;
                 _quickPanelServerRegistrationInlineButton.Text = "+ Register new server";
                 _quickPanelServerRegistrationInlineButton.Location = new Point(16, 14);
-                _quickPanelServerRegistrationInlineButton.Size = new Size(168, 28);
+                _quickPanelServerRegistrationInlineButton.Size = new Size(156, 28);
+                _quickPanelServerStatusValueLabel.Location = new Point(214, 16);
+                _quickPanelServerLoginInlineButton.Location = new Point(438, 14);
+                _quickPanelServerLoginInlineButton.Size = new Size(122, 28);
                 SetServerRegistrationControlsVisible(false);
                 return;
             }
@@ -1367,6 +1556,7 @@ namespace TrayApp
             _quickPanelInsightCard.Size = new Size(578, 388);
             _quickPanelInsightTitleLabel.Text = "Register new server";
             _quickPanelInsightBodyLabel.Visible = false;
+            _quickPanelServerCardsPanel.Visible = false;
             _quickPanelServerRegistrationInlineButton.Visible = false;
             SetServerRegistrationControlsVisible(true);
             _quickPanelServerRegistrationStatusLabel.Text = _serverRegistrationStatusMessage;
@@ -1377,6 +1567,219 @@ namespace TrayApp
                     ? "QR ready"
                     : "Generate QR";
             _quickPanelServerRegistrationQrPictureBox.Visible = _quickPanelServerRegistrationQrPictureBox.Image != null;
+        }
+
+        private void RenderRegisteredServerCards(TrayMenuViewState viewState)
+        {
+            _quickPanelServerCardsPanel.SuspendLayout();
+            _quickPanelServerCardsPanel.Controls.Clear();
+            _quickPanelServerCardsPanel.Size = new Size(544, viewState.InsightBodyHeightOverride ?? 56);
+
+            if (viewState.RegisteredServerCards.Count == 0)
+            {
+                _quickPanelServerCardsPanel.Visible = false;
+                _quickPanelServerCardsPanel.ResumeLayout();
+                return;
+            }
+
+            foreach (RegisteredServerCardViewState card in viewState.RegisteredServerCards)
+            {
+                RegisteredServerCardViewState cardState = new()
+                {
+                    UserId = card.UserId,
+                    NamespaceId = card.NamespaceId,
+                    NamespaceTitle = card.NamespaceTitle,
+                    HasSession = card.HasSession,
+                    IsRevoking = !string.IsNullOrWhiteSpace(_serverCardRevokingNamespaceId) &&
+                        string.Equals(_serverCardRevokingNamespaceId, card.NamespaceId, StringComparison.OrdinalIgnoreCase),
+                    UserLabel = card.UserLabel,
+                    UserValue = card.UserValue,
+                    DeviceLabel = card.DeviceLabel,
+                    DeviceValue = card.DeviceValue,
+                    UrlLabel = card.UrlLabel,
+                    UrlValue = card.UrlValue
+                };
+                _quickPanelServerCardsPanel.Controls.Add(CreateRegisteredServerCard(cardState, quickPanelServerCardRevokeLabel_Click));
+            }
+
+            _quickPanelServerCardsPanel.Visible = true;
+            _quickPanelServerCardsPanel.ResumeLayout();
+        }
+
+        private static Control CreateRegisteredServerCard(RegisteredServerCardViewState card, EventHandler revokeClickHandler)
+        {
+            Panel cardPanel = new()
+            {
+                Size = new Size(520, 118),
+                Margin = new Padding(0, 0, 0, 12),
+                BackColor = Color.FromArgb(30, 41, 57),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+
+            Label titleLabel = new()
+            {
+                AutoSize = false,
+                Location = new Point(14, 12),
+                Size = new Size(card.HasSession ? 252 : 360, 24),
+                Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold),
+                ForeColor = card.HasSession ? Color.FromArgb(120, 205, 0) : Color.FromArgb(239, 68, 68),
+                AutoEllipsis = true,
+                Text = card.NamespaceTitle
+            };
+
+            Button sessionBadge = new()
+            {
+                Location = new Point(card.HasSession ? 274 : 390, 10),
+                Size = new Size(116, 26),
+                BackColor = card.HasSession ? Color.FromArgb(46, 255, 234, 0) : Color.FromArgb(42, 7, 12),
+                ForeColor = card.HasSession ? Color.FromArgb(255, 234, 0) : Color.FromArgb(255, 138, 138),
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Text = card.HasSession ? "live session" : "no session",
+                FlatStyle = FlatStyle.Flat,
+                Enabled = true,
+                TabStop = false,
+                Cursor = Cursors.Default,
+                UseVisualStyleBackColor = false
+            };
+            sessionBadge.FlatAppearance.BorderSize = 1;
+            sessionBadge.FlatAppearance.BorderColor = card.HasSession
+                ? Color.FromArgb(255, 234, 0)
+                : Color.FromArgb(255, 138, 138);
+            sessionBadge.FlatAppearance.MouseDownBackColor = sessionBadge.BackColor;
+            sessionBadge.FlatAppearance.MouseOverBackColor = sessionBadge.BackColor;
+
+            Label userBadge = CreateServerCardFieldLabel(card.UserLabel, new Point(14, 46), 72);
+            Label userValue = CreateServerCardValue(card.UserValue, new Point(92, 46), new Size(414, 18));
+            Label deviceBadge = CreateServerCardFieldLabel(card.DeviceLabel, new Point(14, 68), 72);
+            Label deviceValue = CreateServerCardValue(card.DeviceValue, new Point(92, 68), new Size(414, 18));
+            Label urlBadge = CreateServerCardFieldLabel(card.UrlLabel, new Point(14, 90), 72);
+            Label urlValue = CreateServerCardValue(card.UrlValue, new Point(92, 90), new Size(414, 18));
+
+            cardPanel.Controls.Add(titleLabel);
+            cardPanel.Controls.Add(sessionBadge);
+            cardPanel.Controls.Add(userBadge);
+            cardPanel.Controls.Add(userValue);
+            cardPanel.Controls.Add(deviceBadge);
+            cardPanel.Controls.Add(deviceValue);
+            cardPanel.Controls.Add(urlBadge);
+            cardPanel.Controls.Add(urlValue);
+
+            if (card.HasSession)
+            {
+                Button revokeLabel = new()
+                {
+                    Location = new Point(396, 10),
+                    Size = new Size(102, 26),
+                    BackColor = card.IsRevoking ? Color.FromArgb(115, 255, 0, 0) : Color.FromArgb(255, 0, 0),
+                    ForeColor = Color.White,
+                    Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Cursor = card.IsRevoking ? Cursors.Default : Cursors.Hand,
+                    Enabled = !card.IsRevoking,
+                    Text = card.IsRevoking ? "Revoking..." : "Revoke session",
+                    Tag = card,
+                    FlatStyle = FlatStyle.Flat,
+                    TabStop = false,
+                    UseVisualStyleBackColor = false
+                };
+                revokeLabel.FlatAppearance.BorderSize = 0;
+
+                if (!card.IsRevoking)
+                {
+                    revokeLabel.Click += revokeClickHandler;
+                }
+
+                cardPanel.Controls.Add(revokeLabel);
+            }
+
+            return cardPanel;
+        }
+
+        private async void quickPanelServerCardRevokeLabel_Click(object? sender, EventArgs e)
+        {
+            if (sender is not Control control || control.Tag is not RegisteredServerCardViewState card || _authenticationInProgress)
+            {
+                return;
+            }
+
+            string? previousUserId = AppEnvironment.GetActiveUserId();
+            string? previousNamespaceId = AppEnvironment.GetActiveNamespaceId();
+
+            try
+            {
+                _authenticationInProgress = true;
+                _serverCardRevokingNamespaceId = card.NamespaceId;
+                if (!string.IsNullOrWhiteSpace(card.UserId) && !string.Equals(previousUserId, card.UserId, StringComparison.Ordinal))
+                {
+                    AppEnvironment.SetActiveUser(card.UserId);
+                }
+
+                AppEnvironment.SetActiveNamespace(card.NamespaceId);
+                UpdateQuickPanelState();
+                UpdateAuthenticationMenuItems();
+                await _authenticationService.LogoutActiveNamespaceAsync().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Revoke session", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                if (!string.IsNullOrWhiteSpace(previousUserId) && !string.Equals(AppEnvironment.GetActiveUserId(), previousUserId, StringComparison.Ordinal))
+                {
+                    AppEnvironment.SetActiveUser(previousUserId);
+                }
+
+                if (!string.IsNullOrWhiteSpace(previousNamespaceId))
+                {
+                    AppEnvironment.SetActiveNamespace(previousNamespaceId);
+                }
+
+                _authenticationInProgress = false;
+                _serverCardRevokingNamespaceId = null;
+
+                if (_authenticationService.IsAuthorized)
+                {
+                    _extensionSessionStateStore.MarkAuthorized();
+                }
+                else
+                {
+                    _extensionSessionStateStore.MarkInvalid("authorization_revoked");
+                }
+
+                _lastTrayStateUpdatedAt = DateTimeOffset.Now;
+                UpdateQuickPanelState();
+                UpdateAuthenticationMenuItems();
+            }
+        }
+
+        private static Label CreateServerCardFieldLabel(string text, Point location, int width)
+        {
+            return new Label
+            {
+                AutoSize = false,
+                Location = location,
+                Size = new Size(width, 18),
+                ForeColor = Color.FromArgb(214, 218, 246),
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Text = text
+            };
+        }
+
+        private static Label CreateServerCardValue(string text, Point location, Size size)
+        {
+            return new Label
+            {
+                AutoSize = false,
+                Location = location,
+                Size = size,
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 8.75F, FontStyle.Regular),
+                AutoEllipsis = true,
+                Text = text
+            };
         }
 
         private void SetServerRegistrationControlsVisible(bool visible)
@@ -1421,6 +1824,8 @@ namespace TrayApp
             _quickPanelCredentialGroupSettingsButton.Visible = selectionLayout == TrayMenuSelectionLayout.CredentialSelectors;
             _quickPanelCredentialEntryCreateIconButton.Visible = selectionLayout == TrayMenuSelectionLayout.CredentialSelectors;
             _quickPanelRegisterUserInlineButton.Visible = false;
+            _quickPanelServerStatusValueLabel.Visible = false;
+            _quickPanelServerLoginInlineButton.Visible = false;
 
             if (selectionLayout == TrayMenuSelectionLayout.HomeSummary)
             {
@@ -1561,6 +1966,8 @@ namespace TrayApp
                 _credentialEntries = entries
                     .OrderBy(entry => entry.Label, StringComparer.CurrentCultureIgnoreCase)
                     .ToArray();
+                _credentialEntryDetails.Clear();
+                _credentialDetailLoading = false;
                 _credentialCollectionCacheKey = cacheKey;
                 _credentialCollectionLoaded = true;
 
@@ -1581,8 +1988,10 @@ namespace TrayApp
             {
                 _credentialGroups = Array.Empty<CredentialGroupDto>();
                 _credentialEntries = Array.Empty<CredentialEntryListItem>();
+                _credentialEntryDetails.Clear();
                 _selectedCredentialGroupId = string.Empty;
                 _selectedCredentialEntryId = string.Empty;
+                _credentialDetailLoading = false;
                 _credentialCollectionLoaded = false;
                 _credentialsErrorMessage = ex.Message;
                 Debug.WriteLine($"[TRAY] Credential collection load failed: {ex.Message}");
@@ -1635,7 +2044,7 @@ namespace TrayApp
                 _quickPanelUserComboBox.Items.Clear();
                 _quickPanelNamespaceComboBox.Items.Clear();
 
-                _quickPanelUserComboBox.Items.Add(new SelectionOption("All groups", string.Empty));
+                _quickPanelUserComboBox.Items.Add(new SelectionOption("Select group", string.Empty));
 
                 foreach (CredentialGroupDto group in _credentialGroups)
                 {
@@ -1643,7 +2052,9 @@ namespace TrayApp
                 }
 
                 SelectComboBoxValue(_quickPanelUserComboBox, _selectedCredentialGroupId);
-                _quickPanelUserComboBox.Enabled = !_credentialsLoading && _quickPanelUserComboBox.Items.Count > 1;
+                _quickPanelUserComboBox.Enabled = !_credentialsLoading && _quickPanelUserComboBox.Items.Count > 0;
+
+                _quickPanelNamespaceComboBox.Items.Add(new SelectionOption("Select entries", string.Empty));
 
                 IReadOnlyList<CredentialEntryListItem> filteredEntries = GetFilteredCredentialEntries();
                 foreach (CredentialEntryListItem entry in filteredEntries)
@@ -1652,7 +2063,7 @@ namespace TrayApp
                 }
 
                 RefreshFilteredCredentialEntrySelection();
-                _quickPanelNamespaceComboBox.Enabled = !_credentialsLoading && _quickPanelNamespaceComboBox.Items.Count > 0;
+                _quickPanelNamespaceComboBox.Enabled = !_credentialsLoading && _quickPanelNamespaceComboBox.Items.Count > 1;
             }
             finally
             {
@@ -1668,7 +2079,7 @@ namespace TrayApp
             if (filteredEntries.Count == 0)
             {
                 _selectedCredentialEntryId = string.Empty;
-                _quickPanelNamespaceComboBox.SetSelectedIndexSilently(-1);
+                SelectComboBoxValue(_quickPanelNamespaceComboBox, string.Empty);
                 return;
             }
 
@@ -1678,8 +2089,8 @@ namespace TrayApp
                 return;
             }
 
-            _selectedCredentialEntryId = filteredEntries[0].Id.ToString();
-            SelectComboBoxValue(_quickPanelNamespaceComboBox, _selectedCredentialEntryId);
+            _selectedCredentialEntryId = string.Empty;
+            SelectComboBoxValue(_quickPanelNamespaceComboBox, string.Empty);
         }
 
         private void UpdateCredentialWorkspacePresentation(bool credentialsLayout)
@@ -1747,7 +2158,7 @@ namespace TrayApp
                 }
                 else
                 {
-                    LoadSelectedCredentialIntoEditor();
+                    QueueSelectedCredentialEditorLoad();
                 }
             }
             finally
@@ -1824,39 +2235,136 @@ namespace TrayApp
             SelectComboBoxValue(_quickPanelCredentialAssignedGroupComboBox, preferredSelection);
         }
 
-        private void LoadSelectedCredentialIntoEditor()
+        private void QueueSelectedCredentialEditorLoad()
         {
             CredentialEntryListItem? selectedEntry = GetSelectedCredentialEntry();
             PopulateCredentialAssignedGroupSelector();
 
-            _quickPanelCredentialLabelTextBox.Text = selectedEntry?.Label ?? string.Empty;
-            _quickPanelCredentialDomainTextBox.Text = selectedEntry?.Registry.Domain ?? string.Empty;
-            _quickPanelCredentialUsernameTextBox.Text = selectedEntry?.Registry.Username ?? string.Empty;
-            _quickPanelCredentialPasswordTextBox.Text = selectedEntry?.Registry.Password ?? string.Empty;
-            _quickPanelCredentialDescriptionTextBox.Text = selectedEntry?.Registry.Description ?? string.Empty;
-            SetCredentialPasswordVisible(false);
-
-            SelectComboBoxValue(_quickPanelCredentialAssignedGroupComboBox, selectedEntry?.GroupId ?? string.Empty);
-
-            bool hasSelection = selectedEntry != null;
-            _quickPanelCredentialLabelTextBox.Enabled = hasSelection;
-            _quickPanelCredentialAssignedGroupComboBox.Enabled = hasSelection && !_credentialsLoading;
-            _quickPanelCredentialDomainTextBox.Enabled = hasSelection;
-            _quickPanelCredentialUsernameTextBox.Enabled = hasSelection;
-            _quickPanelCredentialPasswordTextBox.Enabled = hasSelection;
-            _quickPanelCredentialDescriptionTextBox.Enabled = hasSelection;
-            _quickPanelCredentialUsernameCopyButton.Enabled = hasSelection;
-            _quickPanelCredentialPasswordGenerateButton.Enabled = hasSelection;
-            _quickPanelCredentialPasswordRevealButton.Enabled = hasSelection;
-            _quickPanelCredentialPasswordCopyButton.Enabled = hasSelection;
-            _quickPanelCredentialDescriptionCopyButton.Enabled = hasSelection;
-            _quickPanelCredentialSaveButton.Enabled = hasSelection && !_credentialsLoading;
-
-            if (string.IsNullOrWhiteSpace(_credentialEditorStatusMessage))
+            if (selectedEntry == null)
             {
-                _quickPanelCredentialStatusLabel.Text = hasSelection
-                    ? "Selected entry values follow the same group-aware filtering as the extension workspace."
-                    : "Select a credential entry or use Create to add a new item.";
+                _credentialDetailLoadRequestVersion++;
+                _credentialDetailLoading = false;
+                ApplyCredentialDetailToEditor(null);
+                return;
+            }
+
+            if (_credentialEntryDetails.TryGetValue(selectedEntry.Id, out CredentialEntryDetail? cachedDetail))
+            {
+                _credentialDetailLoading = false;
+                ApplyCredentialDetailToEditor(cachedDetail);
+                return;
+            }
+
+            int requestVersion = ++_credentialDetailLoadRequestVersion;
+            _credentialDetailLoading = true;
+            ApplyCredentialDetailLoadingState();
+            _ = LoadSelectedCredentialIntoEditorAsync(selectedEntry, requestVersion);
+        }
+
+        private async Task LoadSelectedCredentialIntoEditorAsync(CredentialEntryListItem selectedEntry, int requestVersion)
+        {
+            try
+            {
+                CredentialEntryDetail detail = await _credentialCollectionService.ReadEntryDetailAsync(selectedEntry).ConfigureAwait(true);
+
+                if (requestVersion != _credentialDetailLoadRequestVersion ||
+                    _credentialWorkspaceMode != CredentialWorkspaceMode.ViewEntry ||
+                    !string.Equals(_selectedCredentialEntryId, selectedEntry.Id.ToString(), StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _credentialEntryDetails[selectedEntry.Id] = detail;
+                _credentialDetailLoading = false;
+                ApplyCredentialDetailToEditor(detail);
+            }
+            catch (Exception ex)
+            {
+                if (requestVersion != _credentialDetailLoadRequestVersion)
+                {
+                    return;
+                }
+
+                _credentialDetailLoading = false;
+                ApplyCredentialDetailToEditor(null);
+                _credentialEditorStatusMessage = ex.Message;
+                _quickPanelCredentialStatusLabel.Text = ex.Message;
+            }
+        }
+
+        private void ApplyCredentialDetailLoadingState()
+        {
+            _updatingCredentialWorkspaceControls = true;
+
+            try
+            {
+                _quickPanelCredentialLabelTextBox.Text = string.Empty;
+                _quickPanelCredentialDomainTextBox.Text = string.Empty;
+                _quickPanelCredentialUsernameTextBox.Text = string.Empty;
+                _quickPanelCredentialPasswordTextBox.Text = string.Empty;
+                _quickPanelCredentialDescriptionTextBox.Text = string.Empty;
+                SetCredentialPasswordVisible(false);
+
+                _quickPanelCredentialLabelTextBox.Enabled = false;
+                _quickPanelCredentialAssignedGroupComboBox.Enabled = false;
+                _quickPanelCredentialDomainTextBox.Enabled = false;
+                _quickPanelCredentialUsernameTextBox.Enabled = false;
+                _quickPanelCredentialPasswordTextBox.Enabled = false;
+                _quickPanelCredentialDescriptionTextBox.Enabled = false;
+                _quickPanelCredentialUsernameCopyButton.Enabled = false;
+                _quickPanelCredentialPasswordGenerateButton.Enabled = false;
+                _quickPanelCredentialPasswordRevealButton.Enabled = false;
+                _quickPanelCredentialPasswordCopyButton.Enabled = false;
+                _quickPanelCredentialDescriptionCopyButton.Enabled = false;
+                _quickPanelCredentialSaveButton.Enabled = false;
+                _quickPanelCredentialStatusLabel.Text = "Loading selected credential...";
+            }
+            finally
+            {
+                _updatingCredentialWorkspaceControls = false;
+            }
+        }
+
+        private void ApplyCredentialDetailToEditor(CredentialEntryDetail? selectedEntry)
+        {
+            PopulateCredentialAssignedGroupSelector();
+            _updatingCredentialWorkspaceControls = true;
+
+            try
+            {
+                _quickPanelCredentialLabelTextBox.Text = selectedEntry?.Label ?? string.Empty;
+                _quickPanelCredentialDomainTextBox.Text = selectedEntry?.Registry.Domain ?? string.Empty;
+                _quickPanelCredentialUsernameTextBox.Text = selectedEntry?.Registry.Username ?? string.Empty;
+                _quickPanelCredentialPasswordTextBox.Text = selectedEntry?.Registry.Password ?? string.Empty;
+                _quickPanelCredentialDescriptionTextBox.Text = selectedEntry?.Registry.Description ?? string.Empty;
+                SetCredentialPasswordVisible(false);
+
+                SelectComboBoxValue(_quickPanelCredentialAssignedGroupComboBox, selectedEntry?.GroupId ?? string.Empty);
+
+                bool hasSelection = selectedEntry != null;
+                _quickPanelCredentialLabelTextBox.Enabled = hasSelection;
+                _quickPanelCredentialAssignedGroupComboBox.Enabled = hasSelection && !_credentialsLoading && !_credentialDetailLoading;
+                _quickPanelCredentialDomainTextBox.Enabled = hasSelection;
+                _quickPanelCredentialUsernameTextBox.Enabled = hasSelection;
+                _quickPanelCredentialPasswordTextBox.Enabled = hasSelection;
+                _quickPanelCredentialDescriptionTextBox.Enabled = hasSelection;
+                _quickPanelCredentialUsernameCopyButton.Enabled = hasSelection;
+                _quickPanelCredentialPasswordGenerateButton.Enabled = hasSelection;
+                _quickPanelCredentialPasswordRevealButton.Enabled = hasSelection;
+                _quickPanelCredentialPasswordCopyButton.Enabled = hasSelection;
+                _quickPanelCredentialDescriptionCopyButton.Enabled = hasSelection;
+                _quickPanelCredentialSaveButton.Enabled = hasSelection && !_credentialsLoading && !_credentialDetailLoading;
+
+                if (string.IsNullOrWhiteSpace(_credentialEditorStatusMessage))
+                {
+                    _quickPanelCredentialStatusLabel.Text = hasSelection
+                        ? "Only the selected entry is decrypted on demand."
+                        : "Select entries to decrypt and view the chosen credential.";
+                }
+            }
+            finally
+            {
+                _updatingCredentialWorkspaceControls = false;
             }
         }
 
@@ -2022,6 +2530,21 @@ namespace TrayApp
             return ("Disconnected", Color.FromArgb(226, 232, 240), Color.FromArgb(51, 65, 85));
         }
 
+        private (string StatusText, Color BackColor, Color ForeColor) ResolveActiveNamespaceStatus()
+        {
+            if (_authenticationInProgress)
+            {
+                return ("In Progress", Color.FromArgb(254, 243, 199), Color.FromArgb(146, 64, 14));
+            }
+
+            if (_isDeviceRegistered && _authenticationService.IsAuthorizedForActiveNamespace)
+            {
+                return ("Connected", Color.FromArgb(220, 252, 231), Color.FromArgb(22, 101, 52));
+            }
+
+            return ("Disconnected", Color.FromArgb(226, 232, 240), Color.FromArgb(51, 65, 85));
+        }
+
         private string BuildQuickPanelSummary(string statusText, NamespaceItemDto? activeNamespace)
         {
             return statusText switch
@@ -2049,7 +2572,7 @@ namespace TrayApp
         private void UpdateTrayTooltip(DesktopRegistration? registration, NamespaceItemDto? activeNamespace, string statusText)
         {
             string userLabel = registration?.DisplayUserName ?? "Not registered";
-            string deviceLabel = string.IsNullOrWhiteSpace(registration?.DeviceId) ? "no device" : registration!.DeviceId;
+            string deviceLabel = string.IsNullOrWhiteSpace(registration?.DesktopDeviceId) ? "no device" : registration!.DesktopDeviceId;
             string serverLabel = activeNamespace?.Namespace ?? "default server";
             string tooltip = $"{statusText} | {userLabel} | {serverLabel} | {deviceLabel}";
 
@@ -2155,8 +2678,39 @@ namespace TrayApp
 
         private async void quickPanelPrimaryActionButton_Click(object? sender, EventArgs e)
         {
-            if (_authenticationService.IsAuthorized)
+            if (_authenticationService.IsAuthorizedForActiveNamespace)
             {
+                if (_trayMenuController?.ActiveSection == TrayMenuSection.Servers)
+                {
+                    try
+                    {
+                        _authenticationInProgress = true;
+                        UpdateAuthenticationMenuItems();
+                        await _authenticationService.LogoutActiveNamespaceAsync().ConfigureAwait(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(ex.Message, "Logout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                    finally
+                    {
+                        _authenticationInProgress = false;
+                        if (_authenticationService.IsAuthorized)
+                        {
+                            _extensionSessionStateStore.MarkAuthorized();
+                        }
+                        else
+                        {
+                            _extensionSessionStateStore.MarkInvalid("authorization_revoked");
+                        }
+                        _lastTrayStateUpdatedAt = DateTimeOffset.Now;
+                        UpdateQuickPanelState();
+                        UpdateAuthenticationMenuItems();
+                    }
+
+                    return;
+                }
+
                 logoutToolStripMenuItem_Click(sender!, EventArgs.Empty);
                 return;
             }
@@ -2209,7 +2763,7 @@ namespace TrayApp
 
         private void quickPanelRegisterUserInlineButton_Click(object? sender, EventArgs e)
         {
-            if (_authenticationInProgress || _authenticationService.IsAuthorized)
+            if (_authenticationInProgress || _authenticationService.IsAuthorizedForActiveNamespace)
             {
                 return;
             }
@@ -2298,6 +2852,7 @@ namespace TrayApp
             if (_trayMenuController?.ActiveSection == TrayMenuSection.Credentials)
             {
                 _selectedCredentialGroupId = option.Value;
+                _selectedCredentialEntryId = string.Empty;
                 PopulateCredentialSelectors();
                 RefreshCredentialQuickPanelState();
                 return;
@@ -2588,6 +3143,9 @@ namespace TrayApp
         {
             _credentialCollectionCacheKey = string.Empty;
             _credentialCollectionLoaded = false;
+            _credentialEntryDetails.Clear();
+            _credentialDetailLoading = false;
+            _credentialDetailLoadRequestVersion++;
 
             if (!string.IsNullOrWhiteSpace(selectedEntryId))
             {

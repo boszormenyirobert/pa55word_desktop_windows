@@ -18,11 +18,21 @@ namespace TrayApp
             if (ShouldRunNativeHost(args))
             {
                 var pipeClient = new Services.NativePipeMessageClient(
-                    message => Console.Error.WriteLine(message));
+                    message =>
+                    {
+                        Services.DiagnosticLog.Write(message);
+                        Console.Error.WriteLine(message);
+                    });
 
                 var nativeHost = new Services.NativeMessagingHostRunner(
                     pipeClient,
-                    message => Console.Error.WriteLine(message));
+                    message =>
+                    {
+                        Services.DiagnosticLog.Write(message);
+                        Console.Error.WriteLine(message);
+                    });
+
+                Services.DiagnosticLog.Write($"[NATIVE-HOST] Starting native host mode. args='{string.Join(" ", args)}'");
 
                 nativeHost.RunAsync().GetAwaiter().GetResult();
                 return;

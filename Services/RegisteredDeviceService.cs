@@ -38,7 +38,7 @@ namespace TrayApp.Services
         {
             DesktopRegistration registration = _configStore.ReadRegistration();
 
-            string keyContainer = "KeyContainer_" + registration.DeviceId;
+            string keyContainer = "KeyContainer_" + registration.DesktopDeviceId;
 
             byte[] decrypted = new Pki().DecryptWithPrivateKeyOaepSha256(
                 keyContainer,
@@ -49,10 +49,10 @@ namespace TrayApp.Services
 
         public void SaveNamespaces(
             string accountId,
-            string deviceId,
+            string desktopDeviceId,
             IReadOnlyCollection<NamespaceItemDto> namespaces)
         {
-            _configStore.SaveNamespaces(AppEnvironment.GetActiveUserId() ?? string.Empty, accountId, deviceId, namespaces);
+            _configStore.SaveNamespaces(AppEnvironment.GetActiveUserId() ?? string.Empty, accountId, desktopDeviceId, namespaces);
         }
     }
 }

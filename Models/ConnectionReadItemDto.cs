@@ -10,8 +10,8 @@ namespace TrayApp.Models
         [JsonPropertyName("accountId")]
         public string AccountId { get; set; } = string.Empty;
 
-        [JsonPropertyName("deviceId")]
-        public string DeviceId { get; set; } = string.Empty;
+        [JsonPropertyName("desktopDeviceId")]
+        public string DesktopDeviceId { get; set; } = string.Empty;
 
         [JsonPropertyName("credentialGroupId")]
         public int? CredentialGroupId { get; set; }

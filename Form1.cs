@@ -60,6 +60,7 @@ namespace TrayApp
             _authStateMonitorService = new AuthStateMonitorService(
                 _authenticationService,
                 _extensionSessionStateStore,
+                HandleAuthorizationStateEvaluated,
                 message => Debug.WriteLine(message));
 
             _extensionSessionStateStore.StateChanged += HandleExtensionSessionStateChanged;
@@ -76,11 +77,19 @@ namespace TrayApp
                 _httpApiClient,
                 _authenticationService,
                 _extensionSessionStateStore,
-                message => Debug.WriteLine(message));
+                message =>
+                {
+                    Debug.WriteLine(message);
+                    DiagnosticLog.Write(message);
+                });
 
             _nativePipeMessageServer = new NativePipeMessageServer(
                 commandHandler,
-                message => Debug.WriteLine(message));
+                message =>
+                {
+                    Debug.WriteLine(message);
+                    DiagnosticLog.Write(message);
+                });
 
             _activateInstanceTask = Task.Run(() => ListenForActivationRequestsAsync(_activateInstanceCts.Token));
             _registrationHostedInTray = false;
@@ -454,11 +463,25 @@ namespace TrayApp
             }
         }
 
+        private void HandleAuthorizationStateEvaluated()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(HandleAuthorizationStateEvaluated));
+                return;
+            }
+
+            _lastTrayStateUpdatedAt = DateTimeOffset.Now;
+            UpdateAuthenticationMenuItems();
+            UpdateQuickPanelState();
+        }
+
         private void UpdateAuthenticationMenuItems()
         {
             bool showAuthenticationActions = _isDeviceRegistered;
             bool isAuthorized = _authenticationService.IsAuthorized;
-            bool canLogin = showAuthenticationActions && !isAuthorized;
+            bool isAuthorizedForActiveNamespace = _authenticationService.IsAuthorizedForActiveNamespace;
+            bool canLogin = showAuthenticationActions && !isAuthorizedForActiveNamespace;
             bool canLogout = showAuthenticationActions && isAuthorized;
             bool usersSectionActive = _trayMenuController?.ActiveSection == TrayMenuSection.Users;
             bool serversSectionActive = _trayMenuController?.ActiveSection == TrayMenuSection.Servers;
@@ -475,6 +498,7 @@ namespace TrayApp
             _userSelectionToolStripMenuItem.Visible = !expandedTrayView && !isAuthorized && hasUserSelectionItems;
             _namespaceSelectionToolStripMenuItem.Visible = !expandedTrayView && hasNamespaceSelectionItems;
             _quickPanelPrimaryActionButton.Text = canLogin ? "Login" : "Logout";
+            _quickPanelPrimaryActionButton.Visible = !serversSectionActive;
             _quickPanelPrimaryActionButton.Enabled = (canLogin || canLogout) && !_authenticationInProgress;
             _quickPanelRegisterServerButton.Visible = serversSectionActive;
             _quickPanelRegisterServerButton.Enabled = !_authenticationInProgress &&
@@ -619,7 +643,7 @@ namespace TrayApp
                 UpdateQuickPanelState();
                 UpdateAuthenticationMenuItems();
 
-                bool authorized = await _authenticationService.EnsureAuthorizedAsync(allowInteractiveLogin: true).ConfigureAwait(true);
+                bool authorized = await _authenticationService.EnsureAuthorizedForActiveNamespaceAsync(allowInteractiveLogin: true).ConfigureAwait(true);
                 if (!authorized)
                 {
                     _authenticationService.RevokeAuthorization();

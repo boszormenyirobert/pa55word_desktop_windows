@@ -4,10 +4,12 @@ namespace TrayApp.Services
 {
     internal sealed class AuthStateMonitorService : IDisposable
     {
-        private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
+        private static readonly bool BackgroundPollingEnabled = true;
+        private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
 
         private readonly AuthenticationService _authenticationService;
         private readonly ExtensionSessionStateStore _extensionSessionStateStore;
+        private readonly Action? _stateEvaluated;
         private readonly Action<string>? _log;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private Task? _monitorTask;
@@ -15,15 +17,23 @@ namespace TrayApp.Services
         public AuthStateMonitorService(
             AuthenticationService authenticationService,
             ExtensionSessionStateStore extensionSessionStateStore,
+            Action? stateEvaluated = null,
             Action<string>? log = null)
         {
             _authenticationService = authenticationService;
             _extensionSessionStateStore = extensionSessionStateStore;
+            _stateEvaluated = stateEvaluated;
             _log = log;
         }
 
         public void Start()
         {
+            if (!BackgroundPollingEnabled)
+            {
+                _log?.Invoke("[AUTH-MONITOR] Background polling is disabled.");
+                return;
+            }
+
             _monitorTask ??= Task.Run(() => RunAsync(_cancellationTokenSource.Token));
         }
 
@@ -81,6 +91,10 @@ namespace TrayApp.Services
             catch (Exception ex)
             {
                 _log?.Invoke($"[AUTH-MONITOR] Unexpected monitor failure: {ex.Message}");
+            }
+            finally
+            {
+                _stateEvaluated?.Invoke();
             }
         }
     }

@@ -7,7 +7,7 @@ namespace TrayApp.Models
         [JsonPropertyName("success")]
         public bool Success { get; set; }
 
-        [JsonPropertyName("deviceId")]
-        public string? DeviceId { get; set; }
+        [JsonPropertyName("desktopDeviceId")]
+        public string? DesktopDeviceId { get; set; }
     }
 }

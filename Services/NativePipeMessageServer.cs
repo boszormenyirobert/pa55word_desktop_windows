@@ -44,10 +44,14 @@ namespace TrayApp.Services
                     string? requestJson = await NativePipe.ReadFramedMessageAsync(server, cancellationToken).ConfigureAwait(false);
                     if (requestJson == null)
                     {
+                        _log?.Invoke("[PIPE-SERVER] Received empty pipe request.");
                         continue;
                     }
 
+                    _log?.Invoke($"[PIPE-SERVER] Received request from native host. chars={requestJson.Length}");
+
                     string responseJson = await _messageProcessor.ProcessRequestAsync(requestJson).ConfigureAwait(false);
+                    _log?.Invoke($"[PIPE-SERVER] Sending response to native host. chars={responseJson.Length}");
                     await NativePipe.WriteFramedMessageAsync(server, responseJson, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

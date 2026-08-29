@@ -18,21 +18,26 @@ namespace TrayApp.Services
         {
             try
             {
+                _log?.Invoke($"[PIPE-CLIENT] Forwarding request to tray pipe. chars={requestJson.Length}");
                 using NamedPipeClientStream client = await ConnectToTrayAppAsync().ConfigureAwait(false);
                 await NativePipe.WriteFramedMessageAsync(client, requestJson, CancellationToken.None).ConfigureAwait(false);
 
                 string? responseJson = await NativePipe.ReadFramedMessageAsync(client, CancellationToken.None).ConfigureAwait(false);
                 if (responseJson == null)
                 {
+                    _log?.Invoke("[PIPE-CLIENT] Tray pipe closed without a response.");
                     return BrowserCommandHandler.CreateErrorResponseJson(
                         "tray_app_no_response",
                         "TrayApp closed the pipe connection without a response.");
                 }
 
+                _log?.Invoke($"[PIPE-CLIENT] Received response from tray pipe. chars={responseJson.Length}");
+
                 return responseJson;
             }
             catch (Exception ex)
             {
+                _log?.Invoke($"[PIPE-CLIENT] Forwarding failed: {ex}");
                 return BrowserCommandHandler.CreateErrorResponseJson(
                     "tray_app_unavailable",
                     ex.Message);
@@ -53,6 +58,7 @@ namespace TrayApp.Services
                 {
                     using var connectCancellation = new CancellationTokenSource(NativePipe.ConnectRetryDelay);
                     await client.ConnectAsync(connectCancellation.Token).ConfigureAwait(false);
+                    _log?.Invoke("[PIPE-CLIENT] Connected to running tray pipe instance.");
                     return client;
                 }
                 catch (OperationCanceledException)

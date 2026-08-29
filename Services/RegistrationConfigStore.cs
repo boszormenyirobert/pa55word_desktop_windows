@@ -55,7 +55,7 @@ namespace TrayApp.Services
             string json = JsonSerializer.Serialize(config, ConfigJsonOptions);
             File.WriteAllText(filePath, json);
             Debug.WriteLine($"{config.AccountId}");
-            Debug.WriteLine($"{config.DeviceId}");
+            Debug.WriteLine($"{config.DesktopDeviceId}");
             Debug.WriteLine($"Bootstrap config saved: {filePath}");
         }
 
@@ -106,7 +106,7 @@ namespace TrayApp.Services
         {
             if (!TryReadRegistration(userId, out DesktopRegistration? registration))
             {
-                throw new InvalidDataException("config.json does not contain a valid accountId/deviceId/encDek.");
+                throw new InvalidDataException("config.json does not contain a valid accountId/desktopDeviceId/encDek.");
             }
 
             return registration!;
@@ -118,13 +118,13 @@ namespace TrayApp.Services
 
             foreach (NamespaceItemDto namespaceItem in registration.Namespaces)
             {
-                if (string.IsNullOrWhiteSpace(namespaceItem.DeviceId))
+                if (string.IsNullOrWhiteSpace(namespaceItem.DesktopDeviceId))
                 {
-                    namespaceItem.DeviceId = registration.DeviceId;
+                    namespaceItem.DesktopDeviceId = registration.DesktopDeviceId;
                 }
 
                 if (string.IsNullOrWhiteSpace(namespaceItem.DeviceName) &&
-                    string.Equals(namespaceItem.DeviceId, registration.DeviceId, StringComparison.Ordinal))
+                    string.Equals(namespaceItem.DesktopDeviceId, registration.DesktopDeviceId, StringComparison.Ordinal))
                 {
                     namespaceItem.DeviceName = Environment.MachineName;
                 }
@@ -173,7 +173,7 @@ namespace TrayApp.Services
                     NamespaceId = namespaceItem.NamespaceId,
                     Namespace = namespaceItem.Namespace,
                     Url = namespaceItem.Url,
-                    DeviceId = namespaceItem.DeviceId,
+                    DesktopDeviceId = namespaceItem.DesktopDeviceId,
                     DeviceName = namespaceItem.DeviceName,
                     AccountId = namespaceItem.AccountId,
                     Id = namespaceItem.Id
@@ -184,9 +184,9 @@ namespace TrayApp.Services
                 existingNamespace.Namespace = namespaceItem.Namespace;
                 existingNamespace.Url = namespaceItem.Url;
 
-                if (!string.IsNullOrWhiteSpace(namespaceItem.DeviceId))
+                if (!string.IsNullOrWhiteSpace(namespaceItem.DesktopDeviceId))
                 {
-                    existingNamespace.DeviceId = namespaceItem.DeviceId;
+                    existingNamespace.DesktopDeviceId = namespaceItem.DesktopDeviceId;
                 }
 
                 if (!string.IsNullOrWhiteSpace(namespaceItem.DeviceName))
@@ -235,15 +235,15 @@ namespace TrayApp.Services
         public void SaveNamespaces(
             string userId,
             string accountId,
-            string deviceId,
+            string desktopDeviceId,
             IReadOnlyCollection<NamespaceItemDto> namespaces)
         {
             Debug.WriteLine($"SaveNamespaces: {filePath}");
             DesktopRegistration registration = ReadRegistration(userId);
 
-            if (!string.Equals(registration.DeviceId, deviceId, StringComparison.Ordinal))
+            if (!string.Equals(registration.DesktopDeviceId, desktopDeviceId, StringComparison.Ordinal))
             {
-                throw new InvalidOperationException("The namespace response does not match the registered deviceId.");
+                throw new InvalidOperationException("The namespace response does not match the registered desktopDeviceId.");
             }
 
             var syncedNamespaces = new List<NamespaceItemDto>();
@@ -269,12 +269,12 @@ namespace TrayApp.Services
                 string resolvedAccountId = string.IsNullOrWhiteSpace(incomingNamespace.AccountId)
                     ? accountId
                     : incomingNamespace.AccountId;
-                string resolvedDeviceId = string.IsNullOrWhiteSpace(incomingNamespace.DeviceId)
-                    ? existingNamespacesById.GetValueOrDefault(namespaceId)?.DeviceId ?? registration.DeviceId
-                    : incomingNamespace.DeviceId;
+                string resolvedDesktopDeviceId = string.IsNullOrWhiteSpace(incomingNamespace.DesktopDeviceId)
+                    ? existingNamespacesById.GetValueOrDefault(namespaceId)?.DesktopDeviceId ?? registration.DesktopDeviceId
+                    : incomingNamespace.DesktopDeviceId;
                 string resolvedDeviceName = string.IsNullOrWhiteSpace(incomingNamespace.DeviceName)
                     ? existingNamespacesById.GetValueOrDefault(namespaceId)?.DeviceName
-                        ?? (string.Equals(resolvedDeviceId, registration.DeviceId, StringComparison.Ordinal)
+                        ?? (string.Equals(resolvedDesktopDeviceId, registration.DesktopDeviceId, StringComparison.Ordinal)
                             ? Environment.MachineName
                             : string.Empty)
                     : incomingNamespace.DeviceName;
@@ -282,7 +282,7 @@ namespace TrayApp.Services
                 syncedNamespaces.Add(new NamespaceItemDto
                 {
                     Id = incomingNamespace.Id,
-                    DeviceId = resolvedDeviceId,
+                    DesktopDeviceId = resolvedDesktopDeviceId,
                     DeviceName = resolvedDeviceName,
                     AccountId = resolvedAccountId,
                     NamespaceId = namespaceId,
@@ -304,7 +304,7 @@ namespace TrayApp.Services
         {
             return registration != null &&
                 !string.IsNullOrWhiteSpace(registration.AccountId) &&
-                !string.IsNullOrWhiteSpace(registration.DeviceId) &&
+                !string.IsNullOrWhiteSpace(registration.DesktopDeviceId) &&
                 !string.IsNullOrWhiteSpace(registration.EncDek);
         }
 
@@ -379,9 +379,9 @@ namespace TrayApp.Services
                 return registration.UserId;
             }
 
-            if (!string.IsNullOrWhiteSpace(registration.DeviceId))
+            if (!string.IsNullOrWhiteSpace(registration.DesktopDeviceId))
             {
-                return registration.DeviceId;
+                return registration.DesktopDeviceId;
             }
 
             return Guid.NewGuid().ToString("D");

@@ -11,49 +11,49 @@ namespace TrayApp.Services
         public const string CredentialStoreGroup = "credential-store/group";
         public const string CredentialStoreGroupAll = "credential-store/group/all";
 
-        public static string RootDevice(string deviceId)
+        public static string RootDevice(string desktopDeviceId)
         {
-            return $"root-device/{Uri.EscapeDataString(deviceId)}";
+            return $"root-device/{Uri.EscapeDataString(desktopDeviceId)}";
         }
 
-        public static string RootDevice(string deviceId, string nonce)
+        public static string RootDevice(string desktopDeviceId, string nonce)
         {
-            return $"{RootDevice(deviceId)}?nonce={Uri.EscapeDataString(nonce)}";
+            return $"{RootDevice(desktopDeviceId)}?nonce={Uri.EscapeDataString(nonce)}";
         }
 
-        public static string AuthenticationStatusNotification(string accountId, string deviceId, string notificationId)
+        public static string AuthenticationStatusNotification(string accountId, string desktopDeviceId, string notificationId)
         {
-            return $"{AuthenticationStatus}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(deviceId)}/{Uri.EscapeDataString(notificationId)}";
+            return $"{AuthenticationStatus}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(desktopDeviceId)}/{Uri.EscapeDataString(notificationId)}";
         }
 
-        public static string AuthenticationStatusNotification(string accountId, string deviceId, string notificationId, string nonce)
+        public static string AuthenticationStatusNotification(string accountId, string desktopDeviceId, string notificationId, string nonce, string namespaceId)
         {
-            return $"{AuthenticationStatusNotification(accountId, deviceId, notificationId)}?nonce={Uri.EscapeDataString(nonce)}";
+            return $"{AuthenticationStatusNotification(accountId, desktopDeviceId, notificationId)}/{Uri.EscapeDataString(namespaceId)}?nonce={Uri.EscapeDataString(nonce)}";
         }
 
-        public static string AuthenticationState(string accountId, string deviceId, string nonce)
+        public static string AuthenticationState(string accountId, string desktopDeviceId, string nonce, string namespaceId)
         {
-            return $"{Authentication}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(deviceId)}?nonce={Uri.EscapeDataString(nonce)}";
+            return $"{Authentication}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(desktopDeviceId)}/{Uri.EscapeDataString(namespaceId)}?nonce={Uri.EscapeDataString(nonce)}";
         }
 
-        public static string AuthenticationRevoke(string accountId, string deviceId, string nonce)
+        public static string AuthenticationRevoke(string accountId, string desktopDeviceId, string nonce, string namespaceId)
         {
-            return AuthenticationState(accountId, deviceId, nonce);
+            return $"{Authentication}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(desktopDeviceId)}?nonce={Uri.EscapeDataString(nonce)}";
         }
 
-        public static string NamespacesForDevice(string accountId, string deviceId)
+        public static string NamespacesForDevice(string accountId, string desktopDeviceId)
         {
-            return $"{Namespace}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(deviceId)}";
+            return $"{Namespace}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(desktopDeviceId)}";
         }
 
-        public static string ResolveNamespace(string deviceId, string namespaceId)
+        public static string ResolveNamespace(string desktopDeviceId, string namespaceId)
         {
-            return $"account/resolve/{Uri.EscapeDataString(deviceId)}/{Uri.EscapeDataString(namespaceId)}";
+            return $"account/resolve/{Uri.EscapeDataString(desktopDeviceId)}/{Uri.EscapeDataString(namespaceId)}";
         }
 
-        public static string ResolveNamespace(string deviceId, string namespaceId, string nonce)
+        public static string ResolveNamespace(string desktopDeviceId, string namespaceId, string nonce)
         {
-            return $"{ResolveNamespace(deviceId, namespaceId)}?nonce={Uri.EscapeDataString(nonce)}";
+            return $"{ResolveNamespace(desktopDeviceId, namespaceId)}?nonce={Uri.EscapeDataString(nonce)}";
         }
     }
 }

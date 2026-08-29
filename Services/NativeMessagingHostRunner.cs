@@ -25,11 +25,14 @@ namespace TrayApp.Services
                     byte[]? requestBytes = await ReadFramedMessageAsync(stdin, cancellationToken).ConfigureAwait(false);
                     if (requestBytes == null)
                     {
+                        _log?.Invoke("[NATIVE-HOST] Standard input closed. Exiting host loop.");
                         return 0;
                     }
 
                     string requestJson = Encoding.UTF8.GetString(requestBytes);
+                    _log?.Invoke($"[NATIVE-HOST] Received framed request. bytes={requestBytes.Length}");
                     string responseJson = await _messageProcessor.ProcessRequestAsync(requestJson).ConfigureAwait(false);
+                    _log?.Invoke($"[NATIVE-HOST] Writing framed response. chars={responseJson.Length}");
 
                     await WriteFramedMessageAsync(stdout, responseJson, cancellationToken).ConfigureAwait(false);
                     await stdout.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -40,6 +43,7 @@ namespace TrayApp.Services
             catch (Exception ex)
             {
                 _log?.Invoke($"[NATIVE-HOST] Fatal error: {ex.Message}");
+                DiagnosticLog.Write($"[NATIVE-HOST] Fatal exception: {ex}");
                 return 1;
             }
         }

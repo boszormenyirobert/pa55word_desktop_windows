@@ -29,8 +29,8 @@ namespace TrayApp.Models
         [JsonPropertyName("accountId")]
         public string AccountId { get; set; } = string.Empty;
 
-        [JsonPropertyName("deviceId")]
-        public string DeviceId { get; set; } = string.Empty;
+        [JsonPropertyName("desktopDeviceId")]
+        public string DesktopDeviceId { get; set; } = string.Empty;
 
         [JsonPropertyName("encDek")]
         public string EncDek { get; set; } = string.Empty;
@@ -40,12 +40,12 @@ namespace TrayApp.Models
 
         [JsonIgnore]
         public string UserKey => string.IsNullOrWhiteSpace(UserId)
-            ? DeviceId
+            ? DesktopDeviceId
             : UserId;
 
         [JsonIgnore]
         public string DisplayUserName => string.IsNullOrWhiteSpace(UserName)
-            ? (string.IsNullOrWhiteSpace(DeviceId) ? "Unnamed user" : DeviceId)
+            ? (string.IsNullOrWhiteSpace(DesktopDeviceId) ? "Unnamed user" : DesktopDeviceId)
             : UserName;
     }
 }

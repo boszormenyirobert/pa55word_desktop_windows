@@ -17,7 +17,9 @@ Az alábbi contract a tray oldali jelenlegi implementációhoz igazodik.
 - Group műveletnél az azonosításra használt mező a `groupId`.
 - A `groupId` a caller-facing group azonosító, ezt kell create után eltárolni és később update/delete során visszaküldeni.
 - A `credentialGroupId` a credential és a group közötti belső reláció numerikus azonosítója.
-- A `registry` response-ben JSON stringként érkezik vissza, nem objektumként.
+- Credential listázásnál a `registry` response-ben titkosított Base64 ciphertext érkezik vissza, nem decryptelt objektum.
+- Credential detail olvasásnál, valamint create/update/delete credential response-ben a `registry` response-ben decryptelt JSON string érkezik vissza.
+- Credential listázásnál az extension kap `iv` és `authTag` mezőket is, hogy a kiválasztott elemet külön detail-read requesttel tudja decrypteltetni a tray-jel.
 
 ## Általános szabályok
 
@@ -25,6 +27,7 @@ Az alábbi contract a tray oldali jelenlegi implementációhoz igazodik.
 - Támogatott értékek: `read`, `create`, `update`, `delete`.
 - Ha a `resource` mező hiányzik, a tray credential műveletként kezeli a requestet.
 - Ha a `resource` értéke `group`, a tray credential group műveletként kezeli a requestet.
+- Ha a `resource` értéke `credential-detail` és a `rest` értéke `read`, a tray a már korábban listázott, titkosított credential payloadból egyetlen elemet decryptel vissza.
 - A tray végzi a backendhez szükséges `accountId`, `deviceId`, `nonce` és `x-signature` előállítását.
 - Az extensionnek ezeket nem kell küldenie.
 - A tray a `registry` objektumot titkosítja, mielőtt továbbküldi a backendnek.
@@ -40,6 +43,9 @@ Az alábbi contract a tray oldali jelenlegi implementációhoz igazodik.
   "label": "Github",
   "groupId": "0f6f3773-1bd2-4f03-b0b9-3a98d863f5ce",
   "groupName": "Work",
+  "iv": "hex-iv",
+  "authTag": "hex-auth-tag",
+  "encryptedRegistry": "base64-ciphertext",
   "registry": {
     "domain": "github.com",
     "username": "john.doe",
@@ -52,6 +58,7 @@ Az alábbi contract a tray oldali jelenlegi implementációhoz igazodik.
 Megjegyzések:
 
 - `resource` csak group művelethez kell. Credential műveletnél elhagyható.
+- `resource: "credential-detail"` csak credential detail read művelethez kell.
 - Credential műveletnél az `id` numerikus azonosító.
 - Group read response-ben az `id` a belső relációs azonosító numerikusan.
 - Group műveletnél a `groupId` a UUID alapú üzleti azonosító.
@@ -59,6 +66,7 @@ Megjegyzések:
 - `groupId` credential create/update esetén opcionális.
 - `groupName` csak group create/update esetén kötelező.
 - `registry` csak credential create/update esetén releváns.
+- `iv`, `authTag`, `encryptedRegistry` csak credential detail read műveletnél releváns request mezők.
 
 ## Credential CRUD
 
@@ -136,7 +144,9 @@ Várható success response:
     "id": 101,
     "label": "Github",
     "credentialGroupId": 1,
-    "registry": "{\"domain\":\"github.com\",\"username\":\"john.doe\",\"password\":\"secret\",\"description\":\"main account\"}",
+    "iv": "0f1e2d3c4b5a69788796a5b4",
+    "authTag": "8f7e6d5c4b3a2910ffeeddccbbaa9988",
+    "registry": "BASE64_ENCRYPTED_CIPHERTEXT",
     "group": {
       "groupId": "550e8400-e29b-41d4-a716-446655440000",
       "groupName": "Work"
@@ -146,7 +156,9 @@ Várható success response:
     "id": 102,
     "label": "Bank",
     "credentialGroupId": null,
-    "registry": "{\"domain\":\"bank.example\",\"username\":\"john.doe\",\"password\":\"secret\",\"description\":\"\"}",
+    "iv": "11223344556677889900aabb",
+    "authTag": "00112233445566778899aabbccddeeff",
+    "registry": "BASE64_ENCRYPTED_CIPHERTEXT",
     "group": null
   }
 ]
@@ -157,7 +169,61 @@ Elvárás az extension felé:
 - Az extension ne feltételezze, hogy a response csak `id`, `label`, `registry` mezőkből áll.
 - Kezelje a `credentialGroupId` numerikus mezőt.
 - Kezelje a nullable `group` mezőt.
-- A `registry` mezőt JSON stringként kezelje, és ha kell, parse-olja vissza objektummá.
+- A `read` response `registry` mezőjét ne parse-olja JSON-ként, mert ez itt még titkosított ciphertext.
+- A lista response `iv`, `authTag`, `registry` mezőit tartsa meg a kiválasztott elem detail-read requestjéhez.
+- A lista response-ből ne építsen közvetlen editort vagy autofill állapotot.
+
+### Read credential detail
+
+Küldendő mezők:
+
+- `rest: "read"`
+- `resource: "credential-detail"`
+- `id`
+- `label`
+- `iv`
+- `authTag`
+- `encryptedRegistry`
+- opcionálisan `groupId`, `groupName`
+
+Példa request:
+
+```json
+{
+  "rest": "read",
+  "resource": "credential-detail",
+  "id": 101,
+  "label": "Github",
+  "iv": "0f1e2d3c4b5a69788796a5b4",
+  "authTag": "8f7e6d5c4b3a2910ffeeddccbbaa9988",
+  "encryptedRegistry": "BASE64_ENCRYPTED_CIPHERTEXT",
+  "groupId": "550e8400-e29b-41d4-a716-446655440000",
+  "groupName": "Work"
+}
+```
+
+Várható success response:
+
+```json
+{
+  "id": 101,
+  "label": "Github",
+  "credentialGroupId": null,
+  "iv": "0f1e2d3c4b5a69788796a5b4",
+  "authTag": "8f7e6d5c4b3a2910ffeeddccbbaa9988",
+  "registry": "{\"domain\":\"github.com\",\"username\":\"john.doe\",\"password\":\"secret\",\"description\":\"main account\"}",
+  "group": {
+    "groupId": "550e8400-e29b-41d4-a716-446655440000",
+    "groupName": "Work"
+  }
+}
+```
+
+Elvárás az extension felé:
+
+- Ezt a requestet csak akkor küldje, amikor a user ténylegesen kiválaszt egy credentialt szerkesztéshez vagy megjelenítéshez.
+- A `registry` mezőt itt már decryptelt JSON stringként kezelje, és ebből építse fel a form state-et és az autofill cache-t.
+- Ne kérje le előre az összes credential detailjét háttérben.
 
 ### Update credential
 

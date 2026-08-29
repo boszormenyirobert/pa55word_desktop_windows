@@ -126,40 +126,40 @@ namespace TrayApp.Services
                 : primaryNamespace.AccountId;
         }
 
-        public static string GetActiveNamespaceDeviceIdOrDefault(string fallbackDeviceId)
+        public static string GetActiveNamespaceDesktopDeviceIdOrDefault(string fallbackDesktopDeviceId)
         {
-            if (string.IsNullOrWhiteSpace(fallbackDeviceId))
+            if (string.IsNullOrWhiteSpace(fallbackDesktopDeviceId))
             {
-                throw new ArgumentException("Fallback device id must not be empty.", nameof(fallbackDeviceId));
+                throw new ArgumentException("Fallback desktop device id must not be empty.", nameof(fallbackDesktopDeviceId));
             }
 
             if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
             {
-                return fallbackDeviceId;
+                return fallbackDesktopDeviceId;
             }
 
             NamespaceItemDto activeNamespace = GetActiveNamespace();
-            return string.IsNullOrWhiteSpace(activeNamespace.DeviceId)
-                ? fallbackDeviceId
-                : activeNamespace.DeviceId;
+            return string.IsNullOrWhiteSpace(activeNamespace.DesktopDeviceId)
+                ? fallbackDesktopDeviceId
+                : activeNamespace.DesktopDeviceId;
         }
 
-        public static string GetPrimaryNamespaceDeviceIdOrDefault(string fallbackDeviceId)
+        public static string GetPrimaryNamespaceDesktopDeviceIdOrDefault(string fallbackDesktopDeviceId)
         {
-            if (string.IsNullOrWhiteSpace(fallbackDeviceId))
+            if (string.IsNullOrWhiteSpace(fallbackDesktopDeviceId))
             {
-                throw new ArgumentException("Fallback device id must not be empty.", nameof(fallbackDeviceId));
+                throw new ArgumentException("Fallback desktop device id must not be empty.", nameof(fallbackDesktopDeviceId));
             }
 
             if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
             {
-                return fallbackDeviceId;
+                return fallbackDesktopDeviceId;
             }
 
             NamespaceItemDto primaryNamespace = registration.Namespaces[0];
-            return string.IsNullOrWhiteSpace(primaryNamespace.DeviceId)
-                ? fallbackDeviceId
-                : primaryNamespace.DeviceId;
+            return string.IsNullOrWhiteSpace(primaryNamespace.DesktopDeviceId)
+                ? fallbackDesktopDeviceId
+                : primaryNamespace.DesktopDeviceId;
         }
 
         public static string GetActiveNamespaceUrlOrDefault(string fallbackBaseUrl)
