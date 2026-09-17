@@ -17,6 +17,7 @@ namespace TrayApp
         private enum RegistrationPromptMode
         {
             DeviceRegistration,
+            NewServerRegistration,
             ServerRegistration
         }
 
@@ -173,9 +174,12 @@ namespace TrayApp
                 return;
             }
 
-            if (_registrationPromptMode == RegistrationPromptMode.ServerRegistration && _showInlineServerRegistration)
+            if (_showInlineServerRegistration &&
+                _registrationPromptMode is RegistrationPromptMode.ServerRegistration or RegistrationPromptMode.NewServerRegistration)
             {
-                _lastTrayMessage = "Server registration is complete.";
+                _lastTrayMessage = _registrationPromptMode == RegistrationPromptMode.NewServerRegistration
+                    ? "New server registration is complete."
+                    : "Namespace sync is complete.";
                 _lastTrayMessageIcon = ToolTipIcon.Info;
                 _lastTrayStateUpdatedAt = DateTimeOffset.Now;
                 ResetInlineServerRegistrationState(clearInputs: true);
@@ -196,7 +200,8 @@ namespace TrayApp
                 return;
             }
 
-            if (_registrationPromptMode == RegistrationPromptMode.ServerRegistration && _showInlineServerRegistration)
+            if (_showInlineServerRegistration &&
+                _registrationPromptMode is RegistrationPromptMode.ServerRegistration or RegistrationPromptMode.NewServerRegistration)
             {
                 _inlineServerRegistrationSubmitting = false;
                 _inlineServerRegistrationAwaitingCompletion = false;
@@ -206,6 +211,10 @@ namespace TrayApp
             }
 
             if (_registrationPromptMode == RegistrationPromptMode.ServerRegistration)
+            {
+                ShowNamespaceSyncPrompt();
+            }
+            else if (_registrationPromptMode == RegistrationPromptMode.NewServerRegistration)
             {
                 ShowServerRegistrationPrompt();
             }
@@ -290,7 +299,7 @@ namespace TrayApp
 
         private void ShowServerRegistrationPrompt()
         {
-            _registrationPromptMode = RegistrationPromptMode.ServerRegistration;
+            _registrationPromptMode = RegistrationPromptMode.NewServerRegistration;
             _registrationHostedInTray = false;
             ApplyRegistrationLayout();
             pictureBoxQr.Visible = false;
@@ -302,7 +311,37 @@ namespace TrayApp
             baseUrlLabel.Text = "Namespace url";
             namespaceNameLabel.Text = "Namespace name";
             continueRegistrationButton.Text = "Generate QR";
-            device_registration.Text = "Server registration";
+            device_registration.Text = "Register new server";
+
+            try
+            {
+                baseUrlTextBox.Text = AppEnvironment.BackendBaseUrl;
+            }
+            catch
+            {
+                baseUrlTextBox.Text = string.Empty;
+            }
+
+            namespaceNameTextBox.Text = string.Empty;
+
+            ShowAndActivateWindow();
+            baseUrlTextBox.Focus();
+        }
+
+        private void ShowNamespaceSyncPrompt()
+        {
+            _registrationPromptMode = RegistrationPromptMode.ServerRegistration;
+            _registrationHostedInTray = false;
+            ApplyRegistrationLayout();
+            pictureBoxQr.Visible = false;
+            baseUrlLabel.Visible = true;
+            baseUrlTextBox.Visible = true;
+            namespaceNameLabel.Visible = false;
+            namespaceNameTextBox.Visible = false;
+            continueRegistrationButton.Visible = true;
+            baseUrlLabel.Text = "Namespace url";
+            continueRegistrationButton.Text = "Generate QR";
+            device_registration.Text = "Namespace sync";
 
             try
             {
@@ -536,7 +575,13 @@ namespace TrayApp
                 if (_registrationPromptMode == RegistrationPromptMode.ServerRegistration)
                 {
                     await _bootstrapRegistrationService
-                        .PrepareServerRegistrationQrAsync(baseUrlTextBox.Text, namespaceNameTextBox.Text)
+                        .PrepareServerRegistrationQrAsync(baseUrlTextBox.Text)
+                        .ConfigureAwait(true);
+                }
+                else if (_registrationPromptMode == RegistrationPromptMode.NewServerRegistration)
+                {
+                    await _bootstrapRegistrationService
+                        .PrepareNewServerRegistrationQrAsync(baseUrlTextBox.Text, namespaceNameTextBox.Text)
                         .ConfigureAwait(true);
                 }
                 else
@@ -551,7 +596,7 @@ namespace TrayApp
                 _lastTrayMessage = "Registration QR generated. Waiting for mobile confirmation.";
                 _lastTrayMessageIcon = ToolTipIcon.Info;
                 _lastTrayStateUpdatedAt = DateTimeOffset.Now;
-                string? pollingBaseUrl = _registrationPromptMode == RegistrationPromptMode.ServerRegistration
+                string? pollingBaseUrl = _registrationPromptMode is RegistrationPromptMode.ServerRegistration or RegistrationPromptMode.NewServerRegistration
                     ? baseUrlTextBox.Text
                     : null;
                 _ = StartPollingAfterRenderAsync(pollingBaseUrl);

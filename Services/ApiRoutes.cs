@@ -38,6 +38,11 @@ namespace TrayApp.Services
 
         public static string AuthenticationRevoke(string accountId, string desktopDeviceId, string nonce, string namespaceId)
         {
+            return AuthenticationRevoke(accountId, desktopDeviceId, nonce);
+        }
+
+        public static string AuthenticationRevoke(string accountId, string desktopDeviceId, string nonce)
+        {
             return $"{Authentication}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(desktopDeviceId)}?nonce={Uri.EscapeDataString(nonce)}";
         }
 
@@ -46,14 +51,14 @@ namespace TrayApp.Services
             return $"{Namespace}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(desktopDeviceId)}";
         }
 
-        public static string ResolveNamespace(string desktopDeviceId, string namespaceId)
+        public static string ResolveNamespace(string desktopDeviceId)
         {
-            return $"account/resolve/{Uri.EscapeDataString(desktopDeviceId)}/{Uri.EscapeDataString(namespaceId)}";
+            return $"account/resolve/{Uri.EscapeDataString(desktopDeviceId)}";
         }
 
-        public static string ResolveNamespace(string desktopDeviceId, string namespaceId, string nonce)
+        public static string ResolveNamespace(string desktopDeviceId, string nonce)
         {
-            return $"{ResolveNamespace(desktopDeviceId, namespaceId)}?nonce={Uri.EscapeDataString(nonce)}";
+            return $"{ResolveNamespace(desktopDeviceId)}?nonce={Uri.EscapeDataString(nonce)}";
         }
     }
 }

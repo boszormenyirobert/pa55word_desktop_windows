@@ -162,6 +162,16 @@ namespace TrayApp.Services
                 : primaryNamespace.DesktopDeviceId;
         }
 
+        public static string GetActiveNamespaceDeviceIdOrDefault(string fallbackDesktopDeviceId)
+        {
+            return GetActiveNamespaceDesktopDeviceIdOrDefault(fallbackDesktopDeviceId);
+        }
+
+        public static string GetPrimaryNamespaceDeviceIdOrDefault(string fallbackDesktopDeviceId)
+        {
+            return GetPrimaryNamespaceDesktopDeviceIdOrDefault(fallbackDesktopDeviceId);
+        }
+
         public static string GetActiveNamespaceUrlOrDefault(string fallbackBaseUrl)
         {
             if (string.IsNullOrWhiteSpace(fallbackBaseUrl))

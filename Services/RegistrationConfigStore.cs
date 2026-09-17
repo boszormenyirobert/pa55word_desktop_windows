@@ -82,6 +82,27 @@ namespace TrayApp.Services
             return registrations;
         }
 
+        public bool ContainsConfiguredUrl(string url)
+        {
+            string normalizedUrl = NormalizeUrlForComparison(url);
+
+            if (TryReadRegistrations(out List<DesktopRegistration>? registrations) && registrations != null)
+            {
+                return registrations.Any(registration => registration.Namespaces.Any(namespaceItem =>
+                    string.Equals(
+                        NormalizeUrlForComparison(namespaceItem.Url),
+                        normalizedUrl,
+                        StringComparison.OrdinalIgnoreCase)));
+            }
+
+            ConfigModel bootstrapConfig = LoadBootstrapConfig();
+            return !string.IsNullOrWhiteSpace(bootstrapConfig.BaseUrl) &&
+                string.Equals(
+                    NormalizeUrlForComparison(bootstrapConfig.BaseUrl),
+                    normalizedUrl,
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
         public bool TryReadRegistration(string? userId, out DesktopRegistration? registration)
         {
             registration = null;
@@ -209,7 +230,7 @@ namespace TrayApp.Services
             Debug.WriteLine($"Namespace upserted: {namespaceItem.NamespaceId} - {namespaceItem.Namespace}");
         }
 
-        public void UpdateNamespaceAccountId(string userId, string namespaceId, string accountId)
+        public void UpdateNamespaceAccountId(string userId, string namespaceId, string accountId, string? namespaceName = null)
         {
             if (string.IsNullOrWhiteSpace(namespaceId))
             {
@@ -228,8 +249,59 @@ namespace TrayApp.Services
 
             namespaceItem.AccountId = accountId;
 
+            if (!string.IsNullOrWhiteSpace(namespaceName))
+            {
+                namespaceItem.Namespace = namespaceName;
+            }
+
             SaveRegistration(registration);
-            Debug.WriteLine($"Namespace account updated: {namespaceId} -> {accountId}");
+            Debug.WriteLine($"Namespace account updated: {namespaceId} -> {accountId}, namespace='{namespaceItem.Namespace}'");
+        }
+
+        public void UpdateNamespaceRegistration(string userId, string existingNamespaceId, string resolvedNamespaceId, string accountId, string? namespaceName = null)
+        {
+            if (string.IsNullOrWhiteSpace(existingNamespaceId))
+            {
+                throw new ArgumentException("Existing namespace id must not be empty.", nameof(existingNamespaceId));
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedNamespaceId))
+            {
+                throw new ArgumentException("Resolved namespace id must not be empty.", nameof(resolvedNamespaceId));
+            }
+
+            if (string.IsNullOrWhiteSpace(accountId))
+            {
+                throw new ArgumentException("Account id must not be empty.", nameof(accountId));
+            }
+
+            DesktopRegistration registration = ReadRegistration(userId);
+            NamespaceItemDto namespaceItem = registration.Namespaces.FirstOrDefault(
+                item => string.Equals(item.NamespaceId, existingNamespaceId, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"Namespace '{existingNamespaceId}' was not found in config.json.");
+
+            NamespaceItemDto? conflictingNamespace = registration.Namespaces.FirstOrDefault(item =>
+                !ReferenceEquals(item, namespaceItem) &&
+                string.Equals(item.NamespaceId, resolvedNamespaceId, StringComparison.Ordinal));
+
+            if (conflictingNamespace != null)
+            {
+                registration.Namespaces.Remove(namespaceItem);
+                SaveRegistration(registration);
+                Debug.WriteLine($"Namespace registration conflict cleanup: removed pending namespace '{existingNamespaceId}' because resolved namespace '{resolvedNamespaceId}' already exists.");
+                throw new InvalidOperationException($"Namespace '{resolvedNamespaceId}' already exists in config.json.");
+            }
+
+            namespaceItem.NamespaceId = resolvedNamespaceId;
+            namespaceItem.AccountId = accountId;
+
+            if (!string.IsNullOrWhiteSpace(namespaceName))
+            {
+                namespaceItem.Namespace = namespaceName;
+            }
+
+            SaveRegistration(registration);
+            Debug.WriteLine($"Namespace registration updated: {existingNamespaceId} -> {resolvedNamespaceId}, accountId='{accountId}', namespace='{namespaceItem.Namespace}'");
         }
 
         public void SaveNamespaces(
@@ -307,6 +379,13 @@ namespace TrayApp.Services
                 !string.IsNullOrWhiteSpace(registration.DesktopDeviceId) &&
                 !string.IsNullOrWhiteSpace(registration.EncDek);
         }
+
+            private static string NormalizeUrlForComparison(string url)
+            {
+                return string.IsNullOrWhiteSpace(url)
+                ? string.Empty
+                : url.Trim().TrimEnd('/');
+            }
 
         private static bool TryParseRegistrations(string json, out List<DesktopRegistration>? registrations)
         {

@@ -51,6 +51,7 @@ namespace TrayApp
         private readonly Label _quickPanelDetailEyebrowLabel = new();
         private readonly Label _quickPanelDetailTitleLabel = new();
         private readonly Label _quickPanelDetailDescriptionLabel = new();
+        private readonly Panel _quickPanelMoveHandle = new();
         private readonly Panel _quickPanelSelectionCard = new();
         private readonly Label _quickPanelUserLabel = new();
         private readonly TrayDropdown _quickPanelUserComboBox = new();
@@ -65,8 +66,8 @@ namespace TrayApp
         private readonly Panel _quickPanelInsightCard = new();
         private readonly Label _quickPanelInsightTitleLabel = new();
         private readonly Label _quickPanelInsightBodyLabel = new();
-        private readonly FlowLayoutPanel _quickPanelServerCardsPanel = new();
         private readonly Button _quickPanelRegisterUserInlineButton = new();
+        private readonly Button _quickPanelRegisterNewServerInlineButton = new();
         private readonly Button _quickPanelServerRegistrationInlineButton = new();
         private readonly Label _quickPanelServerStatusValueLabel = new();
         private readonly Button _quickPanelServerLoginInlineButton = new();
@@ -75,6 +76,7 @@ namespace TrayApp
         private readonly Label _quickPanelServerRegistrationNameLabel = new();
         private readonly TextBox _quickPanelServerRegistrationNameTextBox = new();
         private readonly Button _quickPanelServerRegistrationSubmitButton = new();
+        private readonly Button _quickPanelServerRegistrationBackButton = new();
         private readonly Label _quickPanelServerRegistrationStatusLabel = new();
         private readonly PictureBox _quickPanelServerRegistrationQrPictureBox = new();
         private readonly Label _quickPanelAccountValueLabel = new();
@@ -119,7 +121,6 @@ namespace TrayApp
         private readonly TextBox _quickPanelManagedGroupNameTextBox = new();
         private readonly Label _quickPanelNewGroupNameLabel = new();
         private readonly TextBox _quickPanelNewGroupNameTextBox = new();
-        private string? _serverCardRevokingNamespaceId;
         private bool _updatingQuickPanelSelections;
         private bool _quickPanelRefreshInProgress;
         private string? _lastTrayMessage;
@@ -133,6 +134,9 @@ namespace TrayApp
         private bool _reopenExpandedTrayMenuRequested;
         private bool _explicitQuickPanelCloseRequested;
         private Point _lastTrayMenuScreenPoint;
+        private bool _quickPanelPositionPinned;
+        private bool _quickPanelDragging;
+        private Point _quickPanelDragOffset;
         private bool _credentialsLoading;
         private string _credentialsErrorMessage = string.Empty;
         private string _selectedCredentialGroupId = string.Empty;
@@ -145,6 +149,7 @@ namespace TrayApp
         private bool _showInlineServerRegistration;
         private bool _inlineServerRegistrationSubmitting;
         private bool _inlineServerRegistrationAwaitingCompletion;
+        private InlineServerRegistrationMode _inlineServerRegistrationMode;
         private bool _updatingCredentialWorkspaceControls;
         private string _credentialEditorStatusMessage = string.Empty;
         private string _groupEditorStatusMessage = string.Empty;
@@ -162,11 +167,17 @@ namespace TrayApp
             CreateGroup
         }
 
+        private enum InlineServerRegistrationMode
+        {
+            NamespaceSync,
+            NewServer
+        }
+
         private void InitializeTrayShell()
         {
             contextMenuStrip1.AutoSize = true;
             contextMenuStrip1.MinimumSize = new Size(240, 0);
-            contextMenuStrip1.Padding = new Padding(10, 10, 10, 8);
+            contextMenuStrip1.Padding = Padding.Empty;
             contextMenuStrip1.BackColor = Color.FromArgb(19, 33, 50);
             contextMenuStrip1.ForeColor = Color.White;
             contextMenuStrip1.ShowImageMargin = false;
@@ -210,9 +221,14 @@ namespace TrayApp
             SuspendLayout();
 
             _quickPanelContainer.Padding = new Padding(0);
+            _quickPanelContainer.Margin = Padding.Empty;
+            _quickPanelContainer.Location = Point.Empty;
             _quickPanelContainer.BackColor = Color.FromArgb(31, 33, 57);
             _quickPanelContainer.Visible = false;
             _quickPanelContainer.Size = new Size(820, 660);
+            _quickPanelContainer.MouseDown += quickPanelContainer_MouseDown;
+            _quickPanelContainer.MouseMove += quickPanelContainer_MouseMove;
+            _quickPanelContainer.MouseUp += quickPanelContainer_MouseUp;
 
             _quickPanelMenuPanel.BackColor = Color.FromArgb(36, 38, 63);
             _quickPanelMenuPanel.Location = new Point(0, 0);
@@ -231,12 +247,14 @@ namespace TrayApp
             _quickPanelEyebrowLabel.ForeColor = Color.FromArgb(171, 174, 211);
             _quickPanelEyebrowLabel.Location = new Point(18, 16);
             _quickPanelEyebrowLabel.Text = "MENU";
+            ConfigureQuickPanelDragHandle(_quickPanelEyebrowLabel);
 
             _quickPanelTitleLabel.AutoSize = true;
             _quickPanelTitleLabel.Font = new Font("Segoe UI", 11F, FontStyle.Bold, GraphicsUnit.Point, 0);
             _quickPanelTitleLabel.ForeColor = Color.White;
             _quickPanelTitleLabel.Location = new Point(18, 36);
             _quickPanelTitleLabel.Text = "ZeroIntrusion";
+            ConfigureQuickPanelDragHandle(_quickPanelTitleLabel);
 
             _quickPanelStatusLabel.AutoSize = false;
             _quickPanelStatusLabel.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
@@ -341,7 +359,7 @@ namespace TrayApp
             _quickPanelRefreshButton.Click += quickPanelRefreshButton_Click;
 
             ConfigureQuickPanelButton(_quickPanelRegisterServerButton, Color.FromArgb(230, 238, 247), Color.FromArgb(24, 34, 46));
-            _quickPanelRegisterServerButton.Text = "Register server";
+            _quickPanelRegisterServerButton.Text = "Register new server";
             _quickPanelRegisterServerButton.Click += quickPanelSecondaryActionButton_Click;
 
             ConfigureQuickPanelButton(_quickPanelHideButton, Color.White, Color.FromArgb(24, 34, 46));
@@ -364,18 +382,27 @@ namespace TrayApp
             _quickPanelDetailEyebrowLabel.ForeColor = Color.FromArgb(120, 205, 0);
             _quickPanelDetailEyebrowLabel.Location = new Point(34, 22);
             _quickPanelDetailEyebrowLabel.Text = "SYSTEM STATUS";
+            ConfigureQuickPanelDragHandle(_quickPanelDetailEyebrowLabel);
 
             _quickPanelDetailTitleLabel.AutoSize = true;
             _quickPanelDetailTitleLabel.Font = new Font("Segoe UI", 24F, FontStyle.Bold);
             _quickPanelDetailTitleLabel.ForeColor = Color.White;
             _quickPanelDetailTitleLabel.Location = new Point(32, 52);
             _quickPanelDetailTitleLabel.Text = "Tray overview";
+            ConfigureQuickPanelDragHandle(_quickPanelDetailTitleLabel);
 
             _quickPanelDetailDescriptionLabel.AutoSize = false;
             _quickPanelDetailDescriptionLabel.Font = new Font("Segoe UI", 10F);
             _quickPanelDetailDescriptionLabel.ForeColor = Color.FromArgb(171, 174, 211);
             _quickPanelDetailDescriptionLabel.Location = new Point(36, 98);
             _quickPanelDetailDescriptionLabel.Size = new Size(574, 44);
+
+            _quickPanelMoveHandle.BackColor = Color.FromArgb(46, 48, 77);
+            _quickPanelMoveHandle.Location = new Point(582, 16);
+            _quickPanelMoveHandle.Size = new Size(28, 28);
+            _quickPanelMoveHandle.Cursor = Cursors.SizeAll;
+            _quickPanelMoveHandle.Paint += quickPanelMoveHandle_Paint;
+            ConfigureQuickPanelDragHandle(_quickPanelMoveHandle);
 
             _quickPanelSelectionCard.BackColor = Color.FromArgb(41, 43, 71);
             _quickPanelSelectionCard.BorderStyle = BorderStyle.None;
@@ -435,6 +462,7 @@ namespace TrayApp
             _quickPanelSelectionCard.Controls.Add(_quickPanelCredentialGroupSettingsButton);
             _quickPanelSelectionCard.Controls.Add(_quickPanelCredentialEntryCreateIconButton);
             _quickPanelSelectionCard.Controls.Add(_quickPanelRegisterUserInlineButton);
+            _quickPanelSelectionCard.Controls.Add(_quickPanelRegisterNewServerInlineButton);
             _quickPanelSelectionCard.Controls.Add(_quickPanelServerRegistrationInlineButton);
             _quickPanelSelectionCard.Controls.Add(_quickPanelServerStatusValueLabel);
             _quickPanelSelectionCard.Controls.Add(_quickPanelServerLoginInlineButton);
@@ -474,22 +502,16 @@ namespace TrayApp
             _quickPanelInsightBodyLabel.Location = new Point(16, 42);
             _quickPanelInsightBodyLabel.Size = new Size(544, 56);
 
-            _quickPanelServerCardsPanel.AutoScroll = true;
-            _quickPanelServerCardsPanel.FlowDirection = FlowDirection.TopDown;
-            _quickPanelServerCardsPanel.WrapContents = false;
-            _quickPanelServerCardsPanel.BackColor = Color.Transparent;
-            _quickPanelServerCardsPanel.Location = new Point(16, 16);
-            _quickPanelServerCardsPanel.Size = new Size(544, 56);
-            _quickPanelServerCardsPanel.Margin = new Padding(0);
-            _quickPanelServerCardsPanel.Padding = new Padding(0);
-            _quickPanelServerCardsPanel.Visible = false;
-
             ConfigureQuickPanelInlineActionButton(_quickPanelRegisterUserInlineButton, "+ Register user", new Point(420, 12), quickPanelRegisterUserInlineButton_Click);
             _quickPanelRegisterUserInlineButton.Size = new Size(140, 28);
             _quickPanelRegisterUserInlineButton.ForeColor = Color.FromArgb(120, 205, 0);
 
-            ConfigureQuickPanelInlineActionButton(_quickPanelServerRegistrationInlineButton, "+ Register new server", new Point(16, 14), quickPanelServerRegistrationInlineButton_Click);
-            _quickPanelServerRegistrationInlineButton.Size = new Size(156, 28);
+            ConfigureQuickPanelInlineActionButton(_quickPanelRegisterNewServerInlineButton, "+ Register new server", new Point(16, 14), quickPanelRegisterNewServerInlineButton_Click);
+            _quickPanelRegisterNewServerInlineButton.Size = new Size(156, 28);
+            _quickPanelRegisterNewServerInlineButton.ForeColor = Color.FromArgb(120, 205, 0);
+
+            ConfigureQuickPanelInlineActionButton(_quickPanelServerRegistrationInlineButton, "+ Sync already registered", new Point(180, 14), quickPanelServerRegistrationInlineButton_Click);
+            _quickPanelServerRegistrationInlineButton.Size = new Size(170, 28);
             _quickPanelServerRegistrationInlineButton.ForeColor = Color.FromArgb(120, 205, 0);
 
             _quickPanelServerStatusValueLabel.AutoSize = false;
@@ -504,12 +526,18 @@ namespace TrayApp
             _quickPanelServerLoginInlineButton.Visible = false;
 
             ConfigureCredentialWorkspaceLabel(_quickPanelServerRegistrationUrlLabel, "Namespace url", new Point(16, 50));
-            ConfigureCredentialWorkspaceTextBox(_quickPanelServerRegistrationUrlTextBox, new Point(16, 70), new Size(260, 25), multiline: false);
+            ConfigureCredentialWorkspaceTextBox(_quickPanelServerRegistrationUrlTextBox, new Point(16, 70), new Size(544, 25), multiline: false);
 
             ConfigureCredentialWorkspaceLabel(_quickPanelServerRegistrationNameLabel, "Namespace name", new Point(300, 50));
             ConfigureCredentialWorkspaceTextBox(_quickPanelServerRegistrationNameTextBox, new Point(300, 70), new Size(260, 25), multiline: false);
+            _quickPanelServerRegistrationNameLabel.Visible = false;
+            _quickPanelServerRegistrationNameTextBox.Visible = false;
 
             ConfigureQuickPanelInlineActionButton(_quickPanelServerRegistrationSubmitButton, "Generate QR", new Point(16, 108), quickPanelServerRegistrationSubmitButton_Click);
+
+            ConfigureQuickPanelInlineActionButton(_quickPanelServerRegistrationBackButton, "Back", new Point(16, 12), quickPanelServerRegistrationBackButton_Click);
+            _quickPanelServerRegistrationBackButton.Size = new Size(64, 28);
+            _quickPanelServerRegistrationBackButton.Visible = false;
 
             _quickPanelServerRegistrationStatusLabel.AutoSize = false;
             _quickPanelServerRegistrationStatusLabel.Font = new Font("Segoe UI", 8.75F);
@@ -525,12 +553,12 @@ namespace TrayApp
 
             _quickPanelInsightCard.Controls.Add(_quickPanelInsightTitleLabel);
             _quickPanelInsightCard.Controls.Add(_quickPanelInsightBodyLabel);
-            _quickPanelInsightCard.Controls.Add(_quickPanelServerCardsPanel);
             _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationUrlLabel);
             _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationUrlTextBox);
             _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationNameLabel);
             _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationNameTextBox);
             _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationSubmitButton);
+            _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationBackButton);
             _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationStatusLabel);
             _quickPanelInsightCard.Controls.Add(_quickPanelServerRegistrationQrPictureBox);
 
@@ -551,6 +579,7 @@ namespace TrayApp
             _quickPanelDetailPanel.Controls.Add(_quickPanelDetailEyebrowLabel);
             _quickPanelDetailPanel.Controls.Add(_quickPanelDetailTitleLabel);
             _quickPanelDetailPanel.Controls.Add(_quickPanelDetailDescriptionLabel);
+            _quickPanelDetailPanel.Controls.Add(_quickPanelMoveHandle);
             _quickPanelDetailPanel.Controls.Add(_quickPanelSelectionCard);
             _quickPanelDetailPanel.Controls.Add(_quickPanelMetricsCard);
             _quickPanelDetailPanel.Controls.Add(_quickPanelInsightCard);
@@ -892,7 +921,7 @@ namespace TrayApp
         {
             _quickPanelContainer.Visible = true;
             SetRegistrationControlsVisible(false);
-            _quickPanelContainer.Size = new Size(760, 660);
+            _quickPanelContainer.Size = new Size(760, 560);
 
             if (_quickPanelHost != null)
             {
@@ -970,7 +999,13 @@ namespace TrayApp
             }
 
             _showExpandedTrayMenu = true;
-            _lastTrayMenuScreenPoint = ResolveQuickPanelScreenPoint();
+            ConfigureTrayMenuPresentation();
+
+            if (!_quickPanelPositionPinned)
+            {
+                _lastTrayMenuScreenPoint = ResolveQuickPanelScreenPoint();
+            }
+
             contextMenuStrip1.Show(_lastTrayMenuScreenPoint);
         }
 
@@ -997,29 +1032,96 @@ namespace TrayApp
             return ResolveTrayAnchoredScreenPoint(_quickPanelContainer.Size);
         }
 
+        private void ConfigureQuickPanelDragHandle(Control control)
+        {
+            control.Cursor = Cursors.SizeAll;
+            control.MouseDown += quickPanelContainer_MouseDown;
+            control.MouseMove += quickPanelContainer_MouseMove;
+            control.MouseUp += quickPanelContainer_MouseUp;
+        }
+
+        private static void quickPanelMoveHandle_Paint(object? sender, PaintEventArgs e)
+        {
+            using var pen = new Pen(Color.FromArgb(171, 174, 211), 1.8F);
+            pen.StartCap = System.Drawing.Drawing2D.LineCap.Round;
+            pen.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+
+            const int center = 14;
+            e.Graphics.DrawLine(pen, center, 6, center, 22);
+            e.Graphics.DrawLine(pen, 6, center, 22, center);
+            e.Graphics.DrawLine(pen, center, 6, 11, 9);
+            e.Graphics.DrawLine(pen, center, 6, 17, 9);
+            e.Graphics.DrawLine(pen, center, 22, 11, 19);
+            e.Graphics.DrawLine(pen, center, 22, 17, 19);
+            e.Graphics.DrawLine(pen, 6, center, 9, 11);
+            e.Graphics.DrawLine(pen, 6, center, 9, 17);
+            e.Graphics.DrawLine(pen, 22, center, 19, 11);
+            e.Graphics.DrawLine(pen, 22, center, 19, 17);
+        }
+
+        private void quickPanelContainer_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || !IsQuickPanelOpen())
+            {
+                return;
+            }
+
+            _quickPanelDragging = true;
+            Point screenPoint = Control.MousePosition;
+            _quickPanelDragOffset = new Point(
+                screenPoint.X - contextMenuStrip1.Location.X,
+                screenPoint.Y - contextMenuStrip1.Location.Y);
+        }
+
+        private void quickPanelContainer_MouseMove(object? sender, MouseEventArgs e)
+        {
+            if (!_quickPanelDragging)
+            {
+                return;
+            }
+
+            Point screenPoint = Control.MousePosition;
+            _lastTrayMenuScreenPoint = ClampQuickPanelScreenPoint(new Point(
+                screenPoint.X - _quickPanelDragOffset.X,
+                screenPoint.Y - _quickPanelDragOffset.Y));
+            _quickPanelPositionPinned = true;
+            contextMenuStrip1.Location = _lastTrayMenuScreenPoint;
+        }
+
+        private void quickPanelContainer_MouseUp(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left)
+            {
+                return;
+            }
+
+            _quickPanelDragging = false;
+        }
+
+        private Point ClampQuickPanelScreenPoint(Point screenPoint)
+        {
+            Rectangle workingArea = Screen.FromPoint(screenPoint).WorkingArea;
+            int maximumX = Math.Max(workingArea.Left, workingArea.Right - _quickPanelContainer.Width);
+            int maximumY = Math.Max(workingArea.Top, workingArea.Bottom - _quickPanelContainer.Height);
+
+            return new Point(
+                Math.Clamp(screenPoint.X, workingArea.Left, maximumX),
+                Math.Clamp(screenPoint.Y, workingArea.Top, maximumY));
+        }
+
         private Point ResolveTrayAnchoredScreenPoint(Size contentSize)
         {
             Screen screen = Screen.FromPoint(Cursor.Position);
-            Rectangle bounds = screen.Bounds;
             Rectangle workingArea = screen.WorkingArea;
             const int margin = 8;
 
-            bool taskbarTop = workingArea.Top > bounds.Top;
-            bool taskbarLeft = workingArea.Left > bounds.Left;
+            int x = workingArea.Left + (workingArea.Width - contentSize.Width) / 2;
+            int y = workingArea.Top + (workingArea.Height - contentSize.Height) / 2;
 
-            int x = workingArea.Right - contentSize.Width;
-            int y = taskbarTop
-                ? workingArea.Top
-                : workingArea.Bottom - contentSize.Height;
-
-            if (taskbarLeft)
-            {
-                x = workingArea.Right - contentSize.Width;
-                y = workingArea.Bottom - contentSize.Height;
-            }
-
-            x = Math.Max(workingArea.Left + margin, Math.Min(x, workingArea.Right - contentSize.Width - margin));
-            y = Math.Max(workingArea.Top + margin, Math.Min(y, workingArea.Bottom - contentSize.Height - margin));
+            int maximumX = Math.Max(workingArea.Left, workingArea.Right - contentSize.Width - margin);
+            int maximumY = Math.Max(workingArea.Top, workingArea.Bottom - contentSize.Height - margin);
+            x = Math.Clamp(x, workingArea.Left, maximumX);
+            y = Math.Clamp(y, workingArea.Top, maximumY);
             return new Point(x, y);
         }
 
@@ -1143,7 +1245,7 @@ namespace TrayApp
             LayoutQuickPanelMenuSections();
 
             _quickPanelAccountValueLabel.Text = registration?.DisplayUserName ?? "Not registered";
-            _quickPanelDeviceValueLabel.Text = registration?.DesktopDeviceId ?? "Waiting for pairing";
+            _quickPanelDeviceValueLabel.Text = registration?.DeviceId ?? "Waiting for pairing";
             _quickPanelConnectionValueLabel.Text = BuildConnectionSummary();
             _quickPanelLastUpdatedValueLabel.Text = _quickPanelRefreshInProgress
                 ? "Refreshing..."
@@ -1214,11 +1316,6 @@ namespace TrayApp
             _quickPanelDetailDescriptionLabel.Text = viewState.Description;
             _quickPanelInsightTitleLabel.Text = viewState.InsightTitle;
             _quickPanelInsightBodyLabel.Text = viewState.InsightBody;
-            _quickPanelInsightTitleLabel.Visible = !viewState.HideInsightTitle;
-            _quickPanelInsightBodyLabel.Location = viewState.HideInsightTitle
-                ? new Point(16, 16)
-                : new Point(16, 42);
-            RenderRegisteredServerCards(viewState);
 
             if (!string.IsNullOrWhiteSpace(viewState.AccountMetricOverride))
             {
@@ -1372,25 +1469,13 @@ namespace TrayApp
                 StatusText = statusText,
                 ActiveUserLabel = activeUserLabel,
                 ActiveServerLabel = serverLabel,
-                DesktopDeviceId = registration?.DesktopDeviceId ?? "Waiting for pairing",
+                DesktopDeviceId = registration?.DeviceId ?? "Waiting for pairing",
                 ConnectionSummary = BuildConnectionSummary(),
                 LastUpdatedText = _quickPanelLastUpdatedValueLabel.Text,
                 RegisteredUserCount = registrationCount,
                 RegisteredServerCount = namespaceCount,
                 RegisteredUsers = registrations?.Select(item => item.DisplayUserName).ToArray() ?? Array.Empty<string>(),
                 RegisteredServers = registration?.Namespaces.Select(item => item.Namespace).ToArray() ?? Array.Empty<string>(),
-                RegisteredServerDetails = registration?.Namespaces
-                    .Select(item => new RegisteredServerDetail
-                    {
-                        UserId = registration.UserKey,
-                        NamespaceId = item.NamespaceId,
-                        UserName = registration.DisplayUserName,
-                        DeviceName = string.IsNullOrWhiteSpace(item.DeviceName) ? registration.DesktopDeviceId : item.DeviceName,
-                        Namespace = string.IsNullOrWhiteSpace(item.Namespace) ? "Unnamed namespace" : item.Namespace,
-                        Url = string.IsNullOrWhiteSpace(item.Url) ? "No url" : item.Url,
-                        HasSession = _authorizationSessionStore.HasActiveSessionForNamespace(registration.UserKey, item.NamespaceId)
-                    })
-                    .ToArray() ?? Array.Empty<RegisteredServerDetail>(),
                 CredentialGroupCount = _credentialGroups.Count,
                 CredentialEntryCount = _credentialEntries.Count,
                 FilteredCredentialEntryCount = filteredCredentialEntries.Count,
@@ -1411,7 +1496,6 @@ namespace TrayApp
             _quickPanelDetailDescriptionLabel.Text = viewState.Description;
             _quickPanelInsightTitleLabel.Text = viewState.InsightTitle;
             _quickPanelInsightBodyLabel.Text = viewState.InsightBody;
-            RenderRegisteredServerCards(viewState);
 
             bool credentialsLayout = viewState.SelectionLayout == TrayMenuSelectionLayout.CredentialSelectors;
             _quickPanelUserLabel.Text = credentialsLayout ? "Group" : "Active user";
@@ -1456,6 +1540,7 @@ namespace TrayApp
             bool serversSectionActive = _trayMenuController?.ActiveSection == TrayMenuSection.Servers;
             bool credentialsSectionActive = viewState.SelectionLayout == TrayMenuSelectionLayout.CredentialSelectors;
             bool showInlineRegistration = serversSectionActive && _showInlineServerRegistration;
+            bool isNewServerRegistration = _inlineServerRegistrationMode == InlineServerRegistrationMode.NewServer;
             bool canStartRegistration = _authenticationService.IsAuthorized && !_authenticationInProgress;
             bool canRegisterUser = usersSectionActive && !_authenticationService.IsAuthorized && !_authenticationInProgress;
             bool canLoginToActiveNamespace = !_authenticationService.IsAuthorizedForActiveNamespace && !_authenticationInProgress;
@@ -1463,6 +1548,8 @@ namespace TrayApp
 
             _quickPanelRegisterUserInlineButton.Visible = usersSectionActive && !credentialsSectionActive;
             _quickPanelRegisterUserInlineButton.Enabled = canRegisterUser;
+            _quickPanelRegisterNewServerInlineButton.Visible = serversSectionActive && !showInlineRegistration;
+            _quickPanelRegisterNewServerInlineButton.Enabled = canStartRegistration;
             _quickPanelServerRegistrationInlineButton.Visible = serversSectionActive;
             _quickPanelServerRegistrationInlineButton.Enabled = !_inlineServerRegistrationAwaitingCompletion && !_inlineServerRegistrationSubmitting && canStartRegistration;
             _quickPanelServerStatusValueLabel.Visible = serversSectionActive && !showInlineRegistration;
@@ -1470,11 +1557,9 @@ namespace TrayApp
             _quickPanelServerLoginInlineButton.Enabled = canLoginToActiveNamespace || canLogoutFromSession;
             _quickPanelServerLoginInlineButton.Text = canLoginToActiveNamespace ? "Login" : "Logout";
             _quickPanelSelectionCard.Visible = true;
-            _quickPanelMetricsCard.Visible = !credentialsSectionActive && !viewState.HideMetricsCard;
+            _quickPanelMetricsCard.Visible = !credentialsSectionActive;
             _quickPanelMetricsCard.Location = new Point(32, 294);
-            _quickPanelInsightCard.Location = viewState.HideMetricsCard
-                ? new Point(32, 294)
-                : new Point(32, 424);
+            _quickPanelInsightCard.Location = new Point(32, 424);
 
             if (canLoginToActiveNamespace && !_authenticationInProgress)
             {
@@ -1498,6 +1583,7 @@ namespace TrayApp
             if (credentialsSectionActive)
             {
                 _quickPanelRegisterUserInlineButton.Visible = false;
+                _quickPanelRegisterNewServerInlineButton.Visible = false;
                 _quickPanelServerRegistrationInlineButton.Visible = false;
                 _quickPanelServerStatusValueLabel.Visible = false;
                 _quickPanelServerLoginInlineButton.Visible = false;
@@ -1507,16 +1593,13 @@ namespace TrayApp
 
             if (!serversSectionActive)
             {
-                _quickPanelInsightCard.Size = new Size(578, viewState.InsightCardHeightOverride ?? 110);
+                _quickPanelInsightCard.Size = new Size(578, 110);
+                _quickPanelInsightTitleLabel.Location = new Point(16, 16);
                 _quickPanelInsightTitleLabel.Text = viewState.InsightTitle;
                 _quickPanelInsightBodyLabel.Text = viewState.InsightBody;
-                _quickPanelInsightBodyLabel.Size = new Size(544, viewState.InsightBodyHeightOverride ?? 56);
-                _quickPanelInsightTitleLabel.Visible = !viewState.HideInsightTitle;
-                _quickPanelInsightBodyLabel.Location = viewState.HideInsightTitle
-                    ? new Point(16, 16)
-                    : new Point(16, 42);
-                _quickPanelInsightBodyLabel.Visible = viewState.RegisteredServerCards.Count == 0;
-                _quickPanelServerCardsPanel.Visible = viewState.RegisteredServerCards.Count > 0;
+                _quickPanelInsightBodyLabel.Size = new Size(544, 56);
+                _quickPanelInsightBodyLabel.Visible = true;
+                _quickPanelRegisterNewServerInlineButton.Visible = false;
                 _quickPanelServerRegistrationInlineButton.Visible = false;
                 _quickPanelServerStatusValueLabel.Visible = false;
                 _quickPanelServerLoginInlineButton.Visible = false;
@@ -1530,20 +1613,18 @@ namespace TrayApp
                 _quickPanelNamespaceLabel.Location = new Point(16, 50);
                 _quickPanelNamespaceComboBox.Location = new Point(16, 72);
                 _quickPanelNamespaceComboBox.Size = new Size(544, 25);
-                _quickPanelInsightCard.Size = new Size(578, viewState.InsightCardHeightOverride ?? 110);
+                _quickPanelInsightCard.Size = new Size(578, 110);
                 _quickPanelInsightTitleLabel.Text = viewState.InsightTitle;
                 _quickPanelInsightBodyLabel.Text = viewState.InsightBody;
-                _quickPanelInsightBodyLabel.Size = new Size(544, viewState.InsightBodyHeightOverride ?? 56);
-                _quickPanelInsightTitleLabel.Visible = !viewState.HideInsightTitle;
-                _quickPanelInsightBodyLabel.Location = viewState.HideInsightTitle
-                    ? new Point(16, 16)
-                    : new Point(16, 42);
-                _quickPanelInsightBodyLabel.Visible = viewState.RegisteredServerCards.Count == 0;
-                _quickPanelServerCardsPanel.Visible = viewState.RegisteredServerCards.Count > 0;
-                _quickPanelServerRegistrationInlineButton.Text = "+ Register new server";
-                _quickPanelServerRegistrationInlineButton.Location = new Point(16, 14);
-                _quickPanelServerRegistrationInlineButton.Size = new Size(156, 28);
-                _quickPanelServerStatusValueLabel.Location = new Point(214, 16);
+                _quickPanelInsightBodyLabel.Size = new Size(544, 56);
+                _quickPanelInsightBodyLabel.Visible = true;
+                _quickPanelRegisterNewServerInlineButton.Text = "+ Register new server";
+                _quickPanelRegisterNewServerInlineButton.Location = new Point(16, 14);
+                _quickPanelRegisterNewServerInlineButton.Size = new Size(156, 28);
+                _quickPanelServerRegistrationInlineButton.Text = "+ Sync already registered";
+                _quickPanelServerRegistrationInlineButton.Location = new Point(180, 14);
+                _quickPanelServerRegistrationInlineButton.Size = new Size(170, 28);
+                _quickPanelServerStatusValueLabel.Visible = false;
                 _quickPanelServerLoginInlineButton.Location = new Point(438, 14);
                 _quickPanelServerLoginInlineButton.Size = new Size(122, 28);
                 SetServerRegistrationControlsVisible(false);
@@ -1554,11 +1635,20 @@ namespace TrayApp
             _quickPanelMetricsCard.Visible = false;
             _quickPanelInsightCard.Location = new Point(32, 152);
             _quickPanelInsightCard.Size = new Size(578, 388);
-            _quickPanelInsightTitleLabel.Text = "Register new server";
+            _quickPanelInsightTitleLabel.Location = new Point(92, 17);
+            _quickPanelInsightTitleLabel.Text = isNewServerRegistration ? "Register new server" : "Namespace sync";
             _quickPanelInsightBodyLabel.Visible = false;
-            _quickPanelServerCardsPanel.Visible = false;
+            _quickPanelRegisterNewServerInlineButton.Visible = false;
             _quickPanelServerRegistrationInlineButton.Visible = false;
-            SetServerRegistrationControlsVisible(true);
+            _quickPanelServerRegistrationUrlLabel.Location = new Point(16, 50);
+            _quickPanelServerRegistrationUrlTextBox.Location = new Point(16, 70);
+            _quickPanelServerRegistrationUrlTextBox.Size = isNewServerRegistration
+                ? new Size(260, 25)
+                : new Size(544, 25);
+            _quickPanelServerRegistrationNameLabel.Location = new Point(300, 50);
+            _quickPanelServerRegistrationNameTextBox.Location = new Point(300, 70);
+            _quickPanelServerRegistrationNameTextBox.Size = new Size(260, 25);
+            SetServerRegistrationControlsVisible(true, isNewServerRegistration);
             _quickPanelServerRegistrationStatusLabel.Text = _serverRegistrationStatusMessage;
             _quickPanelServerRegistrationSubmitButton.Enabled = !_inlineServerRegistrationSubmitting && !_inlineServerRegistrationAwaitingCompletion;
             _quickPanelServerRegistrationSubmitButton.Text = _inlineServerRegistrationSubmitting
@@ -1567,228 +1657,17 @@ namespace TrayApp
                     ? "QR ready"
                     : "Generate QR";
             _quickPanelServerRegistrationQrPictureBox.Visible = _quickPanelServerRegistrationQrPictureBox.Image != null;
+            _quickPanelServerRegistrationBackButton.Visible = true;
         }
 
-        private void RenderRegisteredServerCards(TrayMenuViewState viewState)
-        {
-            _quickPanelServerCardsPanel.SuspendLayout();
-            _quickPanelServerCardsPanel.Controls.Clear();
-            _quickPanelServerCardsPanel.Size = new Size(544, viewState.InsightBodyHeightOverride ?? 56);
-
-            if (viewState.RegisteredServerCards.Count == 0)
-            {
-                _quickPanelServerCardsPanel.Visible = false;
-                _quickPanelServerCardsPanel.ResumeLayout();
-                return;
-            }
-
-            foreach (RegisteredServerCardViewState card in viewState.RegisteredServerCards)
-            {
-                RegisteredServerCardViewState cardState = new()
-                {
-                    UserId = card.UserId,
-                    NamespaceId = card.NamespaceId,
-                    NamespaceTitle = card.NamespaceTitle,
-                    HasSession = card.HasSession,
-                    IsRevoking = !string.IsNullOrWhiteSpace(_serverCardRevokingNamespaceId) &&
-                        string.Equals(_serverCardRevokingNamespaceId, card.NamespaceId, StringComparison.OrdinalIgnoreCase),
-                    UserLabel = card.UserLabel,
-                    UserValue = card.UserValue,
-                    DeviceLabel = card.DeviceLabel,
-                    DeviceValue = card.DeviceValue,
-                    UrlLabel = card.UrlLabel,
-                    UrlValue = card.UrlValue
-                };
-                _quickPanelServerCardsPanel.Controls.Add(CreateRegisteredServerCard(cardState, quickPanelServerCardRevokeLabel_Click));
-            }
-
-            _quickPanelServerCardsPanel.Visible = true;
-            _quickPanelServerCardsPanel.ResumeLayout();
-        }
-
-        private static Control CreateRegisteredServerCard(RegisteredServerCardViewState card, EventHandler revokeClickHandler)
-        {
-            Panel cardPanel = new()
-            {
-                Size = new Size(520, 118),
-                Margin = new Padding(0, 0, 0, 12),
-                BackColor = Color.FromArgb(30, 41, 57),
-                BorderStyle = BorderStyle.FixedSingle
-            };
-
-            Label titleLabel = new()
-            {
-                AutoSize = false,
-                Location = new Point(14, 12),
-                Size = new Size(card.HasSession ? 252 : 360, 24),
-                Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold),
-                ForeColor = card.HasSession ? Color.FromArgb(120, 205, 0) : Color.FromArgb(239, 68, 68),
-                AutoEllipsis = true,
-                Text = card.NamespaceTitle
-            };
-
-            Button sessionBadge = new()
-            {
-                Location = new Point(card.HasSession ? 274 : 390, 10),
-                Size = new Size(116, 26),
-                BackColor = card.HasSession ? Color.FromArgb(46, 255, 234, 0) : Color.FromArgb(42, 7, 12),
-                ForeColor = card.HasSession ? Color.FromArgb(255, 234, 0) : Color.FromArgb(255, 138, 138),
-                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Text = card.HasSession ? "live session" : "no session",
-                FlatStyle = FlatStyle.Flat,
-                Enabled = true,
-                TabStop = false,
-                Cursor = Cursors.Default,
-                UseVisualStyleBackColor = false
-            };
-            sessionBadge.FlatAppearance.BorderSize = 1;
-            sessionBadge.FlatAppearance.BorderColor = card.HasSession
-                ? Color.FromArgb(255, 234, 0)
-                : Color.FromArgb(255, 138, 138);
-            sessionBadge.FlatAppearance.MouseDownBackColor = sessionBadge.BackColor;
-            sessionBadge.FlatAppearance.MouseOverBackColor = sessionBadge.BackColor;
-
-            Label userBadge = CreateServerCardFieldLabel(card.UserLabel, new Point(14, 46), 72);
-            Label userValue = CreateServerCardValue(card.UserValue, new Point(92, 46), new Size(414, 18));
-            Label deviceBadge = CreateServerCardFieldLabel(card.DeviceLabel, new Point(14, 68), 72);
-            Label deviceValue = CreateServerCardValue(card.DeviceValue, new Point(92, 68), new Size(414, 18));
-            Label urlBadge = CreateServerCardFieldLabel(card.UrlLabel, new Point(14, 90), 72);
-            Label urlValue = CreateServerCardValue(card.UrlValue, new Point(92, 90), new Size(414, 18));
-
-            cardPanel.Controls.Add(titleLabel);
-            cardPanel.Controls.Add(sessionBadge);
-            cardPanel.Controls.Add(userBadge);
-            cardPanel.Controls.Add(userValue);
-            cardPanel.Controls.Add(deviceBadge);
-            cardPanel.Controls.Add(deviceValue);
-            cardPanel.Controls.Add(urlBadge);
-            cardPanel.Controls.Add(urlValue);
-
-            if (card.HasSession)
-            {
-                Button revokeLabel = new()
-                {
-                    Location = new Point(396, 10),
-                    Size = new Size(102, 26),
-                    BackColor = card.IsRevoking ? Color.FromArgb(115, 255, 0, 0) : Color.FromArgb(255, 0, 0),
-                    ForeColor = Color.White,
-                    Font = new Font("Segoe UI", 8F, FontStyle.Bold),
-                    TextAlign = ContentAlignment.MiddleCenter,
-                    Cursor = card.IsRevoking ? Cursors.Default : Cursors.Hand,
-                    Enabled = !card.IsRevoking,
-                    Text = card.IsRevoking ? "Revoking..." : "Revoke session",
-                    Tag = card,
-                    FlatStyle = FlatStyle.Flat,
-                    TabStop = false,
-                    UseVisualStyleBackColor = false
-                };
-                revokeLabel.FlatAppearance.BorderSize = 0;
-
-                if (!card.IsRevoking)
-                {
-                    revokeLabel.Click += revokeClickHandler;
-                }
-
-                cardPanel.Controls.Add(revokeLabel);
-            }
-
-            return cardPanel;
-        }
-
-        private async void quickPanelServerCardRevokeLabel_Click(object? sender, EventArgs e)
-        {
-            if (sender is not Control control || control.Tag is not RegisteredServerCardViewState card || _authenticationInProgress)
-            {
-                return;
-            }
-
-            string? previousUserId = AppEnvironment.GetActiveUserId();
-            string? previousNamespaceId = AppEnvironment.GetActiveNamespaceId();
-
-            try
-            {
-                _authenticationInProgress = true;
-                _serverCardRevokingNamespaceId = card.NamespaceId;
-                if (!string.IsNullOrWhiteSpace(card.UserId) && !string.Equals(previousUserId, card.UserId, StringComparison.Ordinal))
-                {
-                    AppEnvironment.SetActiveUser(card.UserId);
-                }
-
-                AppEnvironment.SetActiveNamespace(card.NamespaceId);
-                UpdateQuickPanelState();
-                UpdateAuthenticationMenuItems();
-                await _authenticationService.LogoutActiveNamespaceAsync().ConfigureAwait(true);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message, "Revoke session", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-            finally
-            {
-                if (!string.IsNullOrWhiteSpace(previousUserId) && !string.Equals(AppEnvironment.GetActiveUserId(), previousUserId, StringComparison.Ordinal))
-                {
-                    AppEnvironment.SetActiveUser(previousUserId);
-                }
-
-                if (!string.IsNullOrWhiteSpace(previousNamespaceId))
-                {
-                    AppEnvironment.SetActiveNamespace(previousNamespaceId);
-                }
-
-                _authenticationInProgress = false;
-                _serverCardRevokingNamespaceId = null;
-
-                if (_authenticationService.IsAuthorized)
-                {
-                    _extensionSessionStateStore.MarkAuthorized();
-                }
-                else
-                {
-                    _extensionSessionStateStore.MarkInvalid("authorization_revoked");
-                }
-
-                _lastTrayStateUpdatedAt = DateTimeOffset.Now;
-                UpdateQuickPanelState();
-                UpdateAuthenticationMenuItems();
-            }
-        }
-
-        private static Label CreateServerCardFieldLabel(string text, Point location, int width)
-        {
-            return new Label
-            {
-                AutoSize = false,
-                Location = location,
-                Size = new Size(width, 18),
-                ForeColor = Color.FromArgb(214, 218, 246),
-                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
-                TextAlign = ContentAlignment.MiddleLeft,
-                Text = text
-            };
-        }
-
-        private static Label CreateServerCardValue(string text, Point location, Size size)
-        {
-            return new Label
-            {
-                AutoSize = false,
-                Location = location,
-                Size = size,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 8.75F, FontStyle.Regular),
-                AutoEllipsis = true,
-                Text = text
-            };
-        }
-
-        private void SetServerRegistrationControlsVisible(bool visible)
+        private void SetServerRegistrationControlsVisible(bool visible, bool showNamespaceName = false)
         {
             _quickPanelServerRegistrationUrlLabel.Visible = visible;
             _quickPanelServerRegistrationUrlTextBox.Visible = visible;
-            _quickPanelServerRegistrationNameLabel.Visible = visible;
-            _quickPanelServerRegistrationNameTextBox.Visible = visible;
+            _quickPanelServerRegistrationNameLabel.Visible = visible && showNamespaceName;
+            _quickPanelServerRegistrationNameTextBox.Visible = visible && showNamespaceName;
             _quickPanelServerRegistrationSubmitButton.Visible = visible;
+            _quickPanelServerRegistrationBackButton.Visible = visible;
             _quickPanelServerRegistrationStatusLabel.Visible = visible;
             _quickPanelServerRegistrationQrPictureBox.Visible = visible && _quickPanelServerRegistrationQrPictureBox.Image != null;
         }
@@ -1798,6 +1677,7 @@ namespace TrayApp
             _showInlineServerRegistration = false;
             _inlineServerRegistrationSubmitting = false;
             _inlineServerRegistrationAwaitingCompletion = false;
+            _inlineServerRegistrationMode = InlineServerRegistrationMode.NamespaceSync;
             _serverRegistrationStatusMessage = string.Empty;
             _quickPanelServerRegistrationQrPictureBox.Image = null;
 
@@ -1824,6 +1704,7 @@ namespace TrayApp
             _quickPanelCredentialGroupSettingsButton.Visible = selectionLayout == TrayMenuSelectionLayout.CredentialSelectors;
             _quickPanelCredentialEntryCreateIconButton.Visible = selectionLayout == TrayMenuSelectionLayout.CredentialSelectors;
             _quickPanelRegisterUserInlineButton.Visible = false;
+            _quickPanelRegisterNewServerInlineButton.Visible = false;
             _quickPanelServerStatusValueLabel.Visible = false;
             _quickPanelServerLoginInlineButton.Visible = false;
 
@@ -2572,7 +2453,7 @@ namespace TrayApp
         private void UpdateTrayTooltip(DesktopRegistration? registration, NamespaceItemDto? activeNamespace, string statusText)
         {
             string userLabel = registration?.DisplayUserName ?? "Not registered";
-            string deviceLabel = string.IsNullOrWhiteSpace(registration?.DesktopDeviceId) ? "no device" : registration!.DesktopDeviceId;
+            string deviceLabel = string.IsNullOrWhiteSpace(registration?.DeviceId) ? "no device" : registration!.DeviceId;
             string serverLabel = activeNamespace?.Namespace ?? "default server";
             string tooltip = $"{statusText} | {userLabel} | {serverLabel} | {deviceLabel}";
 
@@ -2627,6 +2508,10 @@ namespace TrayApp
             bool expanded = _showExpandedTrayMenu && _isDeviceRegistered;
 
             contextMenuStrip1.AutoSize = !expanded;
+            contextMenuStrip1.BackColor = expanded
+                ? Color.FromArgb(36, 38, 63)
+                : Color.FromArgb(19, 33, 50);
+            contextMenuStrip1.Padding = expanded ? Padding.Empty : new Padding(10, 10, 10, 8);
             contextMenuStrip1.MinimumSize = expanded ? Size.Empty : new Size(240, 0);
             contextMenuStrip1.Size = expanded
                 ? new Size(_quickPanelContainer.Width + contextMenuStrip1.Padding.Horizontal, _quickPanelContainer.Height + contextMenuStrip1.Padding.Vertical)
@@ -2639,6 +2524,8 @@ namespace TrayApp
                 _quickPanelHost.Visible = expanded;
                 _quickPanelHost.Size = _quickPanelContainer.Size;
             }
+
+            contextMenuStrip1.PerformLayout();
         }
 
         private void newUserToolStripMenuItem_Click(object? sender, EventArgs e)
@@ -2729,7 +2616,17 @@ namespace TrayApp
             registerServerToolStripMenuItem_Click(sender, EventArgs.Empty);
         }
 
+        private void quickPanelRegisterNewServerInlineButton_Click(object? sender, EventArgs e)
+        {
+            ShowInlineServerRegistration(InlineServerRegistrationMode.NewServer);
+        }
+
         private void quickPanelServerRegistrationInlineButton_Click(object? sender, EventArgs e)
+        {
+            ShowInlineServerRegistration(InlineServerRegistrationMode.NamespaceSync);
+        }
+
+        private void ShowInlineServerRegistration(InlineServerRegistrationMode registrationMode)
         {
             if (_inlineServerRegistrationAwaitingCompletion || _inlineServerRegistrationSubmitting)
             {
@@ -2744,6 +2641,7 @@ namespace TrayApp
             }
 
             _showInlineServerRegistration = true;
+            _inlineServerRegistrationMode = registrationMode;
             _serverRegistrationStatusMessage = string.Empty;
             _quickPanelServerRegistrationQrPictureBox.Image = null;
 
@@ -2759,6 +2657,14 @@ namespace TrayApp
             _quickPanelServerRegistrationNameTextBox.Text = string.Empty;
             UpdateQuickPanelState();
             _quickPanelServerRegistrationUrlTextBox.Focus();
+        }
+
+        private void quickPanelServerRegistrationBackButton_Click(object? sender, EventArgs e)
+        {
+            _bootstrapRegistrationService.CancelRegistrationPolling();
+            ResetInlineServerRegistrationState(clearInputs: true);
+            _trayMenuController?.SetActiveSection(TrayMenuSection.Servers);
+            UpdateQuickPanelState();
         }
 
         private void quickPanelRegisterUserInlineButton_Click(object? sender, EventArgs e)
@@ -2780,14 +2686,30 @@ namespace TrayApp
 
             try
             {
-                _registrationPromptMode = RegistrationPromptMode.ServerRegistration;
+                bool isNewServerRegistration = _inlineServerRegistrationMode == InlineServerRegistrationMode.NewServer;
+                _registrationPromptMode = isNewServerRegistration
+                    ? RegistrationPromptMode.NewServerRegistration
+                    : RegistrationPromptMode.ServerRegistration;
                 _inlineServerRegistrationSubmitting = true;
-                _serverRegistrationStatusMessage = "Generating QR code for server registration.";
+                _serverRegistrationStatusMessage = isNewServerRegistration
+                    ? "Generating QR code for new server registration."
+                    : "Generating QR code for namespace sync.";
                 UpdateQuickPanelState();
 
-                await _bootstrapRegistrationService
-                    .PrepareServerRegistrationQrAsync(_quickPanelServerRegistrationUrlTextBox.Text, _quickPanelServerRegistrationNameTextBox.Text)
-                    .ConfigureAwait(true);
+                if (isNewServerRegistration)
+                {
+                    await _bootstrapRegistrationService
+                        .PrepareNewServerRegistrationQrAsync(
+                            _quickPanelServerRegistrationUrlTextBox.Text,
+                            _quickPanelServerRegistrationNameTextBox.Text)
+                        .ConfigureAwait(true);
+                }
+                else
+                {
+                    await _bootstrapRegistrationService
+                        .PrepareServerRegistrationQrAsync(_quickPanelServerRegistrationUrlTextBox.Text)
+                        .ConfigureAwait(true);
+                }
 
                 Bitmap? qrCode = AppServices.Qr.GetQrCode();
                 if (qrCode == null)
@@ -2798,7 +2720,9 @@ namespace TrayApp
                 _quickPanelServerRegistrationQrPictureBox.Image = qrCode;
                 _inlineServerRegistrationAwaitingCompletion = true;
                 _serverRegistrationStatusMessage = "QR generated. Waiting for mobile confirmation.";
-                _lastTrayMessage = "Server registration QR generated. Waiting for mobile confirmation.";
+                _lastTrayMessage = isNewServerRegistration
+                    ? "New server registration QR generated. Waiting for mobile confirmation."
+                    : "Namespace sync QR generated. Waiting for mobile confirmation.";
                 _lastTrayMessageIcon = ToolTipIcon.Info;
                 _lastTrayStateUpdatedAt = DateTimeOffset.Now;
                 _ = StartPollingAfterRenderAsync(_quickPanelServerRegistrationUrlTextBox.Text);
@@ -3178,19 +3102,28 @@ namespace TrayApp
                 : base(content)
             {
                 _initialSize = content?.Size ?? new Size(962, 640);
+
+                if (content != null)
+                {
+                    content.Margin = Padding.Empty;
+                    content.Location = Point.Empty;
+                }
+
                 AutoSize = false;
                 Margin = Padding.Empty;
                 Padding = Padding.Empty;
             }
 
             protected override Size DefaultSize => Control?.Size ?? _initialSize;
+
+            protected override Padding DefaultMargin => Padding.Empty;
         }
 
         private sealed class TrayMenuColorTable : ProfessionalColorTable
         {
             public override Color MenuBorder => Color.FromArgb(36, 58, 82);
 
-            public override Color ToolStripDropDownBackground => Color.FromArgb(19, 33, 50);
+            public override Color ToolStripDropDownBackground => Color.FromArgb(36, 38, 63);
 
             public override Color ImageMarginGradientBegin => Color.FromArgb(19, 33, 50);
 

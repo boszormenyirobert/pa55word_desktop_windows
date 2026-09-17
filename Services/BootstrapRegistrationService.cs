@@ -46,6 +46,14 @@ namespace TrayApp.Services
             _ = Task.Run(() => PollRegistrationApi(baseUrlOverride, registrationCts));
         }
 
+        public void CancelRegistrationPolling()
+        {
+            if (!_registrationCts.IsCancellationRequested)
+            {
+                _registrationCts.Cancel();
+            }
+        }
+
         public string GetBootstrapBaseUrl()
         {
             return _pendingRootRegistration?.BaseUrl ?? _configStore.LoadBootstrapConfig().BaseUrl;
@@ -56,9 +64,12 @@ namespace TrayApp.Services
             _pendingServerRegistration = null;
             _pendingRootRegistration = null;
 
+            string normalizedBaseUrl = NormalizeBaseUrl(baseUrl);
+            EnsureUrlIsNotAlreadyRegistered(normalizedBaseUrl);
+
             ConfigModel bootstrapConfig = new()
             {
-                BaseUrl = NormalizeBaseUrl(baseUrl)
+                BaseUrl = normalizedBaseUrl
             };
 
             string normalizedUserName = NormalizeUserName(userName);
@@ -72,18 +83,28 @@ namespace TrayApp.Services
                 bootstrapConfig.DesktopDeviceId);
         }
 
-        public async Task PrepareServerRegistrationQrAsync(string namespaceUrl, string namespaceName)
+        public async Task PrepareServerRegistrationQrAsync(string namespaceUrl)
+        {
+            await PrepareNamespaceRegistrationQrAsync(namespaceUrl, namespaceName: null, "namespace_sync").ConfigureAwait(false);
+        }
+
+        public async Task PrepareNewServerRegistrationQrAsync(string namespaceUrl, string namespaceName)
+        {
+            await PrepareNamespaceRegistrationQrAsync(namespaceUrl, NormalizeNamespaceName(namespaceName), "namespace").ConfigureAwait(false);
+        }
+
+        private async Task PrepareNamespaceRegistrationQrAsync(string namespaceUrl, string? namespaceName, string registrationType)
         {
             DesktopRegistration activeRegistration = _configStore.ReadRegistration(AppEnvironment.GetActiveUserId());
             var pki = new Pki();
             string desktopDeviceId = GenerateId();
             string keyContainer = "KeyContainer_" + desktopDeviceId;
             string normalizedNamespaceUrl = NormalizeBaseUrl(namespaceUrl);
-            string normalizedNamespaceName = NormalizeNamespaceName(namespaceName);
-            string namespaceId = CreateNamespaceId(normalizedNamespaceName, normalizedNamespaceUrl);
+            EnsureUrlIsNotAlreadyRegistered(normalizedNamespaceUrl);
+            string namespaceId = CreateNamespaceId(namespaceName, normalizedNamespaceUrl);
 
             Debug.WriteLine(
-                $"[NS-ADD] Preparing namespace QR. desktopDeviceId='{desktopDeviceId}', namespaceId='{namespaceId}', namespaceUrl='{normalizedNamespaceUrl}', namespaceName='{normalizedNamespaceName}'.");
+                $"[NS-ADD] Preparing namespace QR. type='{registrationType}', desktopDeviceId='{desktopDeviceId}', namespaceId='{namespaceId}', namespaceUrl='{normalizedNamespaceUrl}', namespaceName='{namespaceName ?? "<none>"}'.");
 
             pki.CreatePrivateKey(keyContainer);
             string publicKey = pki.GetPublicKeyDerBase64(keyContainer);
@@ -101,20 +122,31 @@ namespace TrayApp.Services
                 DesktopDeviceId = desktopDeviceId,
                 DeviceName = Environment.MachineName,
                 NamespaceId = namespaceId,
-                Namespace = normalizedNamespaceName,
+                Namespace = namespaceName ?? normalizedNamespaceUrl,
                 Url = normalizedNamespaceUrl
             });
 
-            string payload = JsonSerializer.Serialize(new
-            {
-                type = "namespace",
-                desktopDeviceId,
-                publicKey,
-                deviceName = Environment.MachineName,
-                namespaceId,
-                namespaceUrl = normalizedNamespaceUrl,
-                namespaceName = normalizedNamespaceName
-            });
+            object payloadData = namespaceName == null
+                ? new
+                {
+                    type = registrationType,
+                    desktopDeviceId,
+                    publicKey,
+                    deviceName = Environment.MachineName,
+                    namespaceId,
+                    namespaceUrl = normalizedNamespaceUrl
+                }
+                : new
+                {
+                    type = registrationType,
+                    desktopDeviceId,
+                    publicKey,
+                    deviceName = Environment.MachineName,
+                    namespaceId,
+                    namespaceUrl = normalizedNamespaceUrl,
+                    namespaceName
+                };
+            string payload = JsonSerializer.Serialize(payloadData);
 
             Debug.WriteLine($"[NS-ADD] Namespace QR payload: {payload}");
 
@@ -163,13 +195,13 @@ namespace TrayApp.Services
 
             if (pendingRegistration != null)
             {
-                desktopDeviceId = pendingRegistration.DesktopDeviceId;
+                desktopDeviceId = pendingRegistration.DeviceId;
                 Debug.WriteLine(
-                    $"[REG] Namespace registration polling prepared. desktopDeviceId='{pendingRegistration.DesktopDeviceId}', namespaceId='{pendingRegistration.NamespaceId}', namespaceUrl='{pendingRegistration.NamespaceUrl}'.");
+                    $"[REG] Namespace registration polling prepared. desktopDeviceId='{pendingRegistration.DeviceId}', namespaceId='{pendingRegistration.NamespaceId}', namespaceUrl='{pendingRegistration.NamespaceUrl}'.");
             }
             else if (pendingRootRegistration != null)
             {
-                desktopDeviceId = pendingRootRegistration.DesktopDeviceId;
+                desktopDeviceId = pendingRootRegistration.DeviceId;
                 Debug.WriteLine($"[REG] Root registration polling prepared from pending context. desktopDeviceId='{desktopDeviceId}'.");
             }
             else
@@ -273,17 +305,18 @@ namespace TrayApp.Services
                     if (pendingRegistration != null)
                     {
                         Debug.WriteLine(
-                            $"[REG] Starting namespace resolve after SSE. desktopDeviceId='{pendingRegistration.DesktopDeviceId}', namespaceId='{pendingRegistration.NamespaceId}'.");
-                        string resolvedAccountId = await ResolveNamespaceAccountIdAsync(pendingRegistration).ConfigureAwait(false);
+                            $"[REG] Starting namespace resolve after SSE. desktopDeviceId='{pendingRegistration.DeviceId}', namespaceId='{pendingRegistration.NamespaceId}'.");
+                        ResolveNamespaceResponseDto resolvedNamespace = await ResolveNamespaceAsync(pendingRegistration).ConfigureAwait(false);
                         Debug.WriteLine(
-                            $"[REG] Namespace resolve succeeded. namespaceId='{pendingRegistration.NamespaceId}', accountId='{resolvedAccountId}'.");
-                            Debug.WriteLine(
-                                $"[NS-ADD] Updating config namespace account. userId='{pendingRegistration.UserId}', namespaceId='{pendingRegistration.NamespaceId}', accountId='{resolvedAccountId}'.");
-                        _configStore.UpdateNamespaceAccountId(pendingRegistration.UserId, pendingRegistration.NamespaceId, resolvedAccountId);
-                            Debug.WriteLine(
-                                $"[NS-ADD] Config namespace account updated. userId='{pendingRegistration.UserId}', namespaceId='{pendingRegistration.NamespaceId}', accountId='{resolvedAccountId}'.");
+                            $"[REG] Namespace resolve succeeded. requestedNamespaceId='{pendingRegistration.NamespaceId}', resolvedNamespaceId='{resolvedNamespace.NamespaceId}', accountId='{resolvedNamespace.AccountId}'.");
+                        _configStore.UpdateNamespaceRegistration(
+                            pendingRegistration.UserId,
+                            pendingRegistration.NamespaceId,
+                            resolvedNamespace.NamespaceId,
+                            resolvedNamespace.AccountId,
+                            resolvedNamespace.NamespaceName);
                         Debug.WriteLine(
-                            $"[REG] Preserving existing root registration after namespace add. SSE registration for desktopDeviceId='{registration.DesktopDeviceId}' will not overwrite config root fields.");
+                            $"[REG] Preserving existing root registration after namespace add. SSE registration for desktopDeviceId='{registration.DeviceId}' will not overwrite config root fields.");
                     }
 
                     _pendingRootRegistration = null;
@@ -302,7 +335,7 @@ namespace TrayApp.Services
                     }
 
                     RegistrationCompleted?.Invoke();
-                    Debug.WriteLine($"[REG] Registration flow completed for desktopDeviceId='{registration.DesktopDeviceId}'.");
+                    Debug.WriteLine($"[REG] Registration flow completed for desktopDeviceId='{registration.DeviceId}'.");
                 }
                 catch (Exception ex)
                 {
@@ -318,19 +351,18 @@ namespace TrayApp.Services
             return registration;
         }
 
-        private static async Task<string> ResolveNamespaceAccountIdAsync(PendingRegistrationContext pendingRegistration)
+        private static async Task<ResolveNamespaceResponseDto> ResolveNamespaceAsync(PendingRegistrationContext pendingRegistration)
         {
             var httpApiClient = new HttpApiClient();
             string nonce = NonceGenerator.Create();
             string resolvePayload = JsonSerializer.Serialize(new
             {
-                desktopDeviceId = pendingRegistration.DesktopDeviceId,
-                namespaceId = pendingRegistration.NamespaceId,
+                desktopDeviceId = pendingRegistration.DeviceId,
                 nonce
             });
 
             IReadOnlyDictionary<string, string> resolveHeaders = BrowserCommandHandler.CreateSignatureHeaders(
-                pendingRegistration.DesktopDeviceId,
+                pendingRegistration.DeviceId,
                 resolvePayload,
                 "namespace resolve request");
 
@@ -338,12 +370,10 @@ namespace TrayApp.Services
                 ? $"len={resolveSignature.Length}"
                 : "missing";
 
-            string resolveEndpoint = $"{pendingRegistration.NamespaceUrl}{ApiRoutes.VersionPrefix}/{ApiRoutes.ResolveNamespace(pendingRegistration.DesktopDeviceId, pendingRegistration.NamespaceId, nonce)}";
+            string resolveEndpoint = $"{pendingRegistration.NamespaceUrl}{ApiRoutes.VersionPrefix}/{ApiRoutes.ResolveNamespace(pendingRegistration.DeviceId, nonce)}";
 
-                Debug.WriteLine(
-                    $"[NS-ADD] Resolve request prepared. userId='{pendingRegistration.UserId}', desktopDeviceId='{pendingRegistration.DesktopDeviceId}', namespaceId='{pendingRegistration.NamespaceId}', namespaceUrl='{pendingRegistration.NamespaceUrl}'.");
-                Debug.WriteLine($"[REG] Resolve endpoint: {resolveEndpoint}");
-                Debug.WriteLine($"[REG] Resolve payload: {resolvePayload}");
+            Debug.WriteLine($"[REG] Resolve endpoint: {resolveEndpoint}");
+            Debug.WriteLine($"[REG] Resolve payload: {resolvePayload}");
             Debug.WriteLine($"[NS-ADD] Resolve signature header: {resolveSignaturePreview}");
 
             ResolveNamespaceResponseDto? resolveResponse = await httpApiClient
@@ -351,16 +381,16 @@ namespace TrayApp.Services
                 .ConfigureAwait(false);
 
             Debug.WriteLine(
-                    $"[NS-ADD] Resolve response parsed. userId='{pendingRegistration.UserId}', desktopDeviceId='{pendingRegistration.DesktopDeviceId}', namespaceId='{pendingRegistration.NamespaceId}', accountId='{resolveResponse?.AccountId ?? "<null>"}'.");
+                $"[NS-ADD] Resolve response parsed. namespaceId='{resolveResponse?.NamespaceId ?? "<null>"}', accountId='{resolveResponse?.AccountId ?? "<null>"}', namespaceName='{resolveResponse?.NamespaceName ?? "<null>"}'.");
 
-            if (resolveResponse == null || string.IsNullOrWhiteSpace(resolveResponse.AccountId))
+            if (resolveResponse == null ||
+                string.IsNullOrWhiteSpace(resolveResponse.NamespaceId) ||
+                string.IsNullOrWhiteSpace(resolveResponse.AccountId))
             {
-                    Debug.WriteLine(
-                    $"[NS-ADD] Resolve response missing accountId. userId='{pendingRegistration.UserId}', desktopDeviceId='{pendingRegistration.DesktopDeviceId}', namespaceId='{pendingRegistration.NamespaceId}'.");
-                throw new InvalidDataException("Resolve namespace request did not return a valid accountId.");
+                throw new InvalidDataException("Resolve namespace request did not return a valid namespace response.");
             }
 
-            return resolveResponse.AccountId;
+            return resolveResponse;
         }
 
         private static string BuildRegistrationApiUrl(string desktopDeviceId, string nonce, string? baseUrlOverride)
@@ -383,16 +413,6 @@ namespace TrayApp.Services
             return baseUrl.Trim().TrimEnd('/');
         }
 
-        private static string NormalizeNamespaceName(string namespaceName)
-        {
-            if (string.IsNullOrWhiteSpace(namespaceName))
-            {
-                throw new InvalidOperationException("Namespace name must not be empty.");
-            }
-
-            return namespaceName.Trim();
-        }
-
         private static string NormalizeUserName(string userName)
         {
             if (string.IsNullOrWhiteSpace(userName))
@@ -403,15 +423,33 @@ namespace TrayApp.Services
             return userName.Trim();
         }
 
+        private void EnsureUrlIsNotAlreadyRegistered(string normalizedUrl)
+        {
+            if (_configStore.ContainsConfiguredUrl(normalizedUrl))
+            {
+                throw new InvalidOperationException($"The URL '{normalizedUrl}' already exists in config.json.");
+            }
+        }
+
+        private static string NormalizeNamespaceName(string namespaceName)
+        {
+            if (string.IsNullOrWhiteSpace(namespaceName))
+            {
+                throw new InvalidOperationException("Namespace name must not be empty.");
+            }
+
+            return namespaceName.Trim();
+        }
+
         private static bool IsRetryableRegistrationFailure(HttpRequestException exception)
         {
             return exception.Message.Contains("Device not found for signature verification", StringComparison.OrdinalIgnoreCase) ||
                 exception.Message.Contains("e_40101_2", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static string CreateNamespaceId(string namespaceName, string namespaceUrl)
+        private static string CreateNamespaceId(string? namespaceName, string namespaceUrl)
         {
-            byte[] seedBytes = Encoding.UTF8.GetBytes($"{namespaceName}\n{namespaceUrl}");
+            byte[] seedBytes = Encoding.UTF8.GetBytes($"{namespaceName ?? string.Empty}|{namespaceUrl}");
             byte[] hashBytes = SHA256.HashData(seedBytes);
 
             return Convert.ToHexString(hashBytes[..5]).ToLowerInvariant();
@@ -441,7 +479,7 @@ namespace TrayApp.Services
 
         private sealed record PendingRegistrationContext(
             string UserId,
-            string DesktopDeviceId,
+            string DeviceId,
             string NamespaceId,
             string NamespaceUrl);
 
@@ -449,6 +487,6 @@ namespace TrayApp.Services
             string UserId,
             string UserName,
             string BaseUrl,
-            string DesktopDeviceId);
+            string DeviceId);
     }
 }

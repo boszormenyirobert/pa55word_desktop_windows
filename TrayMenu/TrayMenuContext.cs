@@ -29,6 +29,8 @@ namespace TrayApp.TrayMenu
 
         public string DesktopDeviceId { get; init; } = string.Empty;
 
+        public string DeviceId => DesktopDeviceId;
+
         public string ConnectionSummary { get; init; } = string.Empty;
 
         public string LastUpdatedText { get; init; } = string.Empty;

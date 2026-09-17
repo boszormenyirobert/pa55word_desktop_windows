@@ -32,6 +32,13 @@ namespace TrayApp.Models
         [JsonPropertyName("desktopDeviceId")]
         public string DesktopDeviceId { get; set; } = string.Empty;
 
+        [JsonIgnore]
+        public string DeviceId
+        {
+            get => DesktopDeviceId;
+            set => DesktopDeviceId = value;
+        }
+
         [JsonPropertyName("encDek")]
         public string EncDek { get; set; } = string.Empty;
 

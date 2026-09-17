@@ -409,7 +409,16 @@ namespace TrayApp.Services
                 nonce = NonceGenerator.Create()
             };
 
-            string payloadJson = JsonSerializer.Serialize(statusPayload);
+            var serializedStatusPayload = new AuthenticationStatusRequestDto
+            {
+                NamespaceId = context.NamespaceId,
+                AccountId = context.AccountId,
+                DesktopDeviceId = context.DesktopDeviceId,
+                NotificationId = notificationId,
+                Nonce = statusPayload.nonce
+            };
+
+            string payloadJson = JsonSerializer.Serialize(serializedStatusPayload);
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
                 context.DesktopDeviceId,
                 payloadJson,
@@ -638,11 +647,11 @@ namespace TrayApp.Services
         private async Task<bool> RevokeActiveAttestationAsync(AuthorizationContext context)
         {
             string nonce = NonceGenerator.Create();
-            var payload = new
+            var payload = new AuthenticationRevokeRequestDto
             {
-                accountId = context.AccountId,
-                desktopDeviceId = context.DesktopDeviceId,
-                nonce,
+                AccountId = context.AccountId,
+                DesktopDeviceId = context.DesktopDeviceId,
+                Nonce = nonce,
             };
 
             string payloadJson = JsonSerializer.Serialize(payload);
