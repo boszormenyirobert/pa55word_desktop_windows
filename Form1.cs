@@ -465,7 +465,15 @@ namespace TrayApp
             _lastTrayMessageIcon = icon;
             _lastTrayStateUpdatedAt = DateTimeOffset.Now;
             UpdateAuthenticationMenuItems();
-            UpdateQuickPanelState();
+
+            if (_authenticationInProgress && _trayMenuController?.ActiveSection == TrayMenuSection.Servers)
+            {
+                ShowServerAuthenticationProgress();
+            }
+            else
+            {
+                UpdateQuickPanelState();
+            }
 
             if (string.IsNullOrWhiteSpace(message))
             {
@@ -685,7 +693,16 @@ namespace TrayApp
                 _lastTrayMessage = "Waiting for confirmation on your mobile device.";
                 _lastTrayMessageIcon = ToolTipIcon.Info;
                 _lastTrayStateUpdatedAt = DateTimeOffset.Now;
-                UpdateQuickPanelState();
+
+                if (_trayMenuController?.ActiveSection == TrayMenuSection.Servers)
+                {
+                    ShowServerAuthenticationProgress();
+                }
+                else
+                {
+                    UpdateQuickPanelState();
+                }
+
                 UpdateAuthenticationMenuItems();
 
                 bool authorized = await _authenticationService.EnsureAuthorizedForActiveNamespaceAsync(allowInteractiveLogin: true).ConfigureAwait(true);

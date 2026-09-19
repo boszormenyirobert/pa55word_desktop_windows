@@ -7,8 +7,7 @@ namespace TrayApp.Services
         private const string ConfigFileName = "config.json";
         private static readonly object SelectionLock = new();
         private static readonly RegistrationConfigStore ConfigStore = new();
-        private static string? _activeUserId;
-        private static string? _activeNamespaceId;
+        private static ActiveRegistrationSelection _activeSelection = new(null, null);
 
         public static string BackendBaseUrl => ResolveBackendBaseUrl();
 
@@ -34,7 +33,7 @@ namespace TrayApp.Services
         {
             lock (SelectionLock)
             {
-                return _activeNamespaceId;
+                return _activeSelection.NamespaceId;
             }
         }
 
@@ -42,7 +41,7 @@ namespace TrayApp.Services
         {
             lock (SelectionLock)
             {
-                return _activeUserId;
+                return _activeSelection.UserId;
             }
         }
 
@@ -57,13 +56,15 @@ namespace TrayApp.Services
 
             lock (SelectionLock)
             {
-                _activeUserId = registration.UserKey;
+                _activeSelection = _activeSelection with { UserId = registration.UserKey };
 
                 NamespaceItemDto? selectedNamespace = registration.Namespaces.FirstOrDefault(namespaceItem =>
-                    string.Equals(namespaceItem.NamespaceId, _activeNamespaceId, StringComparison.Ordinal));
+                    string.Equals(namespaceItem.NamespaceId, _activeSelection.NamespaceId, StringComparison.Ordinal));
 
-                _activeNamespaceId = selectedNamespace?.NamespaceId
-                    ?? registration.Namespaces.FirstOrDefault()?.NamespaceId;
+                _activeSelection = _activeSelection with
+                {
+                    NamespaceId = selectedNamespace?.NamespaceId ?? registration.Namespaces.FirstOrDefault()?.NamespaceId
+                };
             }
         }
 
@@ -86,7 +87,7 @@ namespace TrayApp.Services
 
             lock (SelectionLock)
             {
-                _activeNamespaceId = selectedNamespace.NamespaceId;
+                _activeSelection = _activeSelection with { NamespaceId = selectedNamespace.NamespaceId };
             }
         }
 
@@ -221,12 +222,12 @@ namespace TrayApp.Services
             lock (SelectionLock)
             {
                 NamespaceItemDto? selectedNamespace = registration.Namespaces.FirstOrDefault(
-                    item => string.Equals(item.NamespaceId, _activeNamespaceId, StringComparison.Ordinal));
+                    item => string.Equals(item.NamespaceId, _activeSelection.NamespaceId, StringComparison.Ordinal));
 
                 if (selectedNamespace == null)
                 {
                     selectedNamespace = registration.Namespaces[0];
-                    _activeNamespaceId = selectedNamespace.NamespaceId;
+                    _activeSelection = _activeSelection with { NamespaceId = selectedNamespace.NamespaceId };
                 }
 
                 if (string.IsNullOrWhiteSpace(selectedNamespace.Url))
@@ -269,21 +270,24 @@ namespace TrayApp.Services
             lock (SelectionLock)
             {
                 DesktopRegistration registration = registrations.FirstOrDefault(candidate =>
-                        string.Equals(candidate.UserKey, _activeUserId, StringComparison.Ordinal))
+                        string.Equals(candidate.UserKey, _activeSelection.UserId, StringComparison.Ordinal))
                     ?? registrations[0];
 
-                _activeUserId = registration.UserKey;
+                _activeSelection = _activeSelection with { UserId = registration.UserKey };
 
                 if (registration.Namespaces.Count > 0)
                 {
                     NamespaceItemDto? selectedNamespace = registration.Namespaces.FirstOrDefault(namespaceItem =>
-                        string.Equals(namespaceItem.NamespaceId, _activeNamespaceId, StringComparison.Ordinal));
+                        string.Equals(namespaceItem.NamespaceId, _activeSelection.NamespaceId, StringComparison.Ordinal));
 
-                    _activeNamespaceId = selectedNamespace?.NamespaceId ?? registration.Namespaces[0].NamespaceId;
+                    _activeSelection = _activeSelection with
+                    {
+                        NamespaceId = selectedNamespace?.NamespaceId ?? registration.Namespaces[0].NamespaceId
+                    };
                 }
                 else
                 {
-                    _activeNamespaceId = null;
+                    _activeSelection = _activeSelection with { NamespaceId = null };
                 }
 
                 return registration;
@@ -298,5 +302,7 @@ namespace TrayApp.Services
                     string.Equals(registration.UserKey, userId, StringComparison.Ordinal))
                 ?? throw new InvalidOperationException($"User '{userId}' was not found in config.json.");
         }
+
+        private readonly record struct ActiveRegistrationSelection(string? UserId, string? NamespaceId);
     }
 }

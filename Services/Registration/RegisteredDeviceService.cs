@@ -36,13 +36,32 @@ namespace TrayApp.Services
 
         public (DesktopRegistration Registration, byte[] DecryptedDek) ReadRegistrationAndDecryptDek()
         {
-            DesktopRegistration registration = _configStore.ReadRegistration();
+            DesktopRegistration registration = _configStore.ReadRegistration(AppEnvironment.GetActiveUserId());
+            string activeNamespaceId = AppEnvironment.GetActiveNamespaceId() ?? string.Empty;
+            NamespaceItemDto? activeNamespace = registration.Namespaces.FirstOrDefault(namespaceItem =>
+                string.Equals(namespaceItem.NamespaceId, activeNamespaceId, StringComparison.Ordinal));
 
-            string keyContainer = "KeyContainer_" + registration.DesktopDeviceId;
+            string desktopDeviceIdForDek = string.IsNullOrWhiteSpace(activeNamespace?.DesktopDeviceId)
+                ? registration.DesktopDeviceId
+                : activeNamespace.DesktopDeviceId;
+            if (activeNamespace != null &&
+                !string.IsNullOrWhiteSpace(activeNamespace.DesktopDeviceId) &&
+                !string.Equals(activeNamespace.DesktopDeviceId, registration.DesktopDeviceId, StringComparison.Ordinal) &&
+                string.IsNullOrWhiteSpace(activeNamespace.EncDek))
+            {
+                throw new InvalidOperationException(
+                    $"Namespace '{activeNamespace.NamespaceId}' does not contain encrypted DEK for desktop device '{activeNamespace.DesktopDeviceId}'. Re-sync or re-register this namespace.");
+            }
+
+            string encDekForNamespace = string.IsNullOrWhiteSpace(activeNamespace?.EncDek)
+                ? registration.EncDek
+                : activeNamespace.EncDek;
+
+            string keyContainer = "KeyContainer_" + desktopDeviceIdForDek;
 
             byte[] decrypted = new Pki().DecryptWithPrivateKeyOaepSha256(
                 keyContainer,
-                registration.EncDek);
+                encDekForNamespace);
 
             return (registration, decrypted);
         }

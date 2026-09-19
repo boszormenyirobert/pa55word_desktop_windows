@@ -8,11 +8,6 @@ namespace TrayApp.Services
     internal sealed class CredentialCollectionService
     {
         private const string TrayDeviceName = "ZeroIntrusion Tray";
-        private static string ConnectionEndpoint => AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStore);
-        private static string ConnectionReadEndpoint => AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreAll);
-        private static string GroupEndpoint => AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreGroup);
-        private static string GroupReadEndpoint => AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreGroupAll);
-
         private readonly RegisteredDeviceService _registeredDeviceService;
         private readonly HttpApiClient _httpApiClient;
         private readonly AuthenticationService _authenticationService;
@@ -51,7 +46,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group read request");
 
             List<CredentialGroupDto>? groups = await _httpApiClient
-                .PostJsonAsync<ConnectionReadRequestDto, List<CredentialGroupDto>>(GroupReadEndpoint, payload, headers)
+                .PostJsonAsync<ConnectionReadRequestDto, List<CredentialGroupDto>>(CredentialApiEndpoints.GroupRead, payload, headers)
                 .ConfigureAwait(false);
 
             if (groups == null)
@@ -80,7 +75,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential read request");
 
             List<ConnectionReadItemDto>? items = await _httpApiClient
-                .PostJsonAsync<ConnectionReadRequestDto, List<ConnectionReadItemDto>>(ConnectionReadEndpoint, payload, headers)
+                .PostJsonAsync<ConnectionReadRequestDto, List<ConnectionReadItemDto>>(CredentialApiEndpoints.ConnectionRead, payload, headers)
                 .ConfigureAwait(false);
 
             items ??= new List<ConnectionReadItemDto>();
@@ -140,7 +135,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential create request");
 
             ConnectionReadItemDto? response = await _httpApiClient
-                .PostJsonAsync<ConnectionRequestDto, ConnectionReadItemDto>(ConnectionEndpoint, payload, headers)
+                .PostJsonAsync<ConnectionRequestDto, ConnectionReadItemDto>(CredentialApiEndpoints.Connection, payload, headers)
                 .ConfigureAwait(false);
 
             return response == null ? null : new CredentialEntryListItem(
@@ -187,7 +182,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential update request");
 
             ConnectionReadItemDto? response = await _httpApiClient
-                .PutJsonAsync<ConnectionRequestDto, ConnectionReadItemDto>(ConnectionEndpoint, payload, headers)
+                .PutJsonAsync<ConnectionRequestDto, ConnectionReadItemDto>(CredentialApiEndpoints.Connection, payload, headers)
                 .ConfigureAwait(false);
 
             return response == null ? null : new CredentialEntryListItem(
@@ -221,7 +216,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group create request");
 
             return await _httpApiClient
-                .PostJsonAsync<CredentialGroupCreateRequestDto, CredentialGroupDto>(GroupEndpoint, request, headers)
+                .PostJsonAsync<CredentialGroupCreateRequestDto, CredentialGroupDto>(CredentialApiEndpoints.Group, request, headers)
                 .ConfigureAwait(false);
         }
 
@@ -246,7 +241,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group update request");
 
             return await _httpApiClient
-                .PutJsonAsync<CredentialGroupUpdateRequestDto, CredentialGroupDto>(GroupEndpoint, request, headers)
+                .PutJsonAsync<CredentialGroupUpdateRequestDto, CredentialGroupDto>(CredentialApiEndpoints.Group, request, headers)
                 .ConfigureAwait(false);
         }
 

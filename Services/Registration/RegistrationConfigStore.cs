@@ -4,14 +4,9 @@ using TrayApp.Models;
 
 namespace TrayApp.Services
 {
-    internal sealed class RegistrationConfigStore
+    internal sealed partial class RegistrationConfigStore
     {
         private readonly string filePath = AppPaths.GetSourceRootFilePath("config.json");
-
-        private static readonly JsonSerializerOptions BootstrapConfigJsonOptions = new()
-        {
-            PropertyNameCaseInsensitive = true
-        };
 
         private static readonly JsonSerializerOptions ConfigJsonOptions = new()
         {
@@ -19,76 +14,18 @@ namespace TrayApp.Services
             WriteIndented = true
         };
 
-        public bool FileExists => File.Exists(filePath);
-
-        public ConfigModel LoadBootstrapConfig()
-        {
-            Debug.WriteLine($"Bootstrap config loaded: {filePath}");
-
-            if (!File.Exists(filePath))
-            {
-                return new ConfigModel();
-            }
-
-            string json = File.ReadAllText(filePath);
-
-            if (TryParseRegistrations(json, out List<DesktopRegistration>? registrations) &&
-                registrations is { Count: > 0 })
-            {
-                return new ConfigModel
-                {
-                    BaseUrl = registrations[0].Namespaces.FirstOrDefault()?.Url ?? string.Empty
-                };
-            }
-
-            return JsonSerializer.Deserialize<ConfigModel>(json, BootstrapConfigJsonOptions) ?? new ConfigModel();
-        }
-
-        public void SaveBootstrapConfig(ConfigModel config)
-        {
-            if (TryReadRegistrations(out _))
-            {
-                Debug.WriteLine("Bootstrap config save skipped because config.json already contains registrations.");
-                return;
-            }
-
-            string json = JsonSerializer.Serialize(config, ConfigJsonOptions);
-            File.WriteAllText(filePath, json);
-            Debug.WriteLine($"{config.AccountId}");
-            Debug.WriteLine($"{config.DesktopDeviceId}");
-            Debug.WriteLine($"Bootstrap config saved: {filePath}");
-        }
-
-        public bool TryReadRegistrations(out List<DesktopRegistration>? registrations)
-        {
-            registrations = null;
-
-            if (!File.Exists(filePath))
-            {
-                return false;
-            }
-
-            string json = File.ReadAllText(filePath);
-            return TryParseRegistrations(json, out registrations);
-        }
-
-        public IReadOnlyList<DesktopRegistration> ReadRegistrations()
-        {
-            if (!TryReadRegistrations(out List<DesktopRegistration>? registrations) || registrations is not { Count: > 0 })
-            {
-                throw new InvalidDataException("config.json does not contain any valid registrations.");
-            }
-
-            return registrations;
-        }
-
-        public bool ContainsConfiguredUrl(string url)
+        public bool ContainsConfiguredUrl(string url, string? userKey = null)
         {
             string normalizedUrl = NormalizeUrlForComparison(url);
 
             if (TryReadRegistrations(out List<DesktopRegistration>? registrations) && registrations != null)
             {
-                return registrations.Any(registration => registration.Namespaces.Any(namespaceItem =>
+                IEnumerable<DesktopRegistration> registrationsToInspect = string.IsNullOrWhiteSpace(userKey)
+                    ? registrations
+                    : registrations.Where(registration =>
+                        string.Equals(registration.UserKey, userKey, StringComparison.Ordinal));
+
+                return registrationsToInspect.Any(registration => registration.Namespaces.Any(namespaceItem =>
                     string.Equals(
                         NormalizeUrlForComparison(namespaceItem.Url),
                         normalizedUrl,
@@ -144,6 +81,13 @@ namespace TrayApp.Services
                     namespaceItem.DesktopDeviceId = registration.DesktopDeviceId;
                 }
 
+                if (string.IsNullOrWhiteSpace(namespaceItem.EncDek) &&
+                    string.Equals(namespaceItem.DesktopDeviceId, registration.DesktopDeviceId, StringComparison.Ordinal) &&
+                    !string.IsNullOrWhiteSpace(registration.EncDek))
+                {
+                    namespaceItem.EncDek = registration.EncDek;
+                }
+
                 if (string.IsNullOrWhiteSpace(namespaceItem.DeviceName) &&
                     string.Equals(namespaceItem.DesktopDeviceId, registration.DesktopDeviceId, StringComparison.Ordinal))
                 {
@@ -167,8 +111,6 @@ namespace TrayApp.Services
                 registrations.Add(registration);
             }
 
-            EnsureNoCrossUserNamespaceConflicts(registrations);
-
             string json = JsonSerializer.Serialize(registrations, ConfigJsonOptions);
             File.WriteAllText(filePath, json);
 
@@ -184,8 +126,7 @@ namespace TrayApp.Services
 
             DesktopRegistration registration = ReadRegistration(userId);
 
-            NamespaceItemDto? existingNamespace = registration.Namespaces.FirstOrDefault(
-                item => string.Equals(item.NamespaceId, namespaceItem.NamespaceId, StringComparison.Ordinal));
+            NamespaceItemDto? existingNamespace = FindNamespace(registration, namespaceItem.NamespaceId);
 
             if (existingNamespace == null)
             {
@@ -197,7 +138,8 @@ namespace TrayApp.Services
                     DesktopDeviceId = namespaceItem.DesktopDeviceId,
                     DeviceName = namespaceItem.DeviceName,
                     AccountId = namespaceItem.AccountId,
-                    Id = namespaceItem.Id
+                    Id = namespaceItem.Id,
+                    EncDek = namespaceItem.EncDek
                 });
             }
             else
@@ -224,6 +166,11 @@ namespace TrayApp.Services
                 {
                     existingNamespace.Id = namespaceItem.Id;
                 }
+
+                if (!string.IsNullOrWhiteSpace(namespaceItem.EncDek))
+                {
+                    existingNamespace.EncDek = namespaceItem.EncDek;
+                }
             }
 
             SaveRegistration(registration);
@@ -243,8 +190,7 @@ namespace TrayApp.Services
             }
 
             DesktopRegistration registration = ReadRegistration(userId);
-            NamespaceItemDto namespaceItem = registration.Namespaces.FirstOrDefault(
-                item => string.Equals(item.NamespaceId, namespaceId, StringComparison.Ordinal))
+            NamespaceItemDto namespaceItem = FindNamespace(registration, namespaceId)
                 ?? throw new InvalidOperationException($"Namespace '{namespaceId}' was not found in config.json.");
 
             namespaceItem.AccountId = accountId;
@@ -258,7 +204,7 @@ namespace TrayApp.Services
             Debug.WriteLine($"Namespace account updated: {namespaceId} -> {accountId}, namespace='{namespaceItem.Namespace}'");
         }
 
-        public void UpdateNamespaceRegistration(string userId, string existingNamespaceId, string resolvedNamespaceId, string accountId, string? namespaceName = null)
+        public void UpdateNamespaceRegistration(string userId, string existingNamespaceId, string resolvedNamespaceId, string accountId, string? namespaceName = null, string? encDek = null)
         {
             if (string.IsNullOrWhiteSpace(existingNamespaceId))
             {
@@ -276,8 +222,7 @@ namespace TrayApp.Services
             }
 
             DesktopRegistration registration = ReadRegistration(userId);
-            NamespaceItemDto namespaceItem = registration.Namespaces.FirstOrDefault(
-                item => string.Equals(item.NamespaceId, existingNamespaceId, StringComparison.Ordinal))
+            NamespaceItemDto namespaceItem = FindNamespace(registration, existingNamespaceId)
                 ?? throw new InvalidOperationException($"Namespace '{existingNamespaceId}' was not found in config.json.");
 
             NamespaceItemDto? conflictingNamespace = registration.Namespaces.FirstOrDefault(item =>
@@ -294,6 +239,11 @@ namespace TrayApp.Services
 
             namespaceItem.NamespaceId = resolvedNamespaceId;
             namespaceItem.AccountId = accountId;
+
+            if (!string.IsNullOrWhiteSpace(encDek))
+            {
+                namespaceItem.EncDek = encDek;
+            }
 
             if (!string.IsNullOrWhiteSpace(namespaceName))
             {
@@ -350,6 +300,12 @@ namespace TrayApp.Services
                             ? Environment.MachineName
                             : string.Empty)
                     : incomingNamespace.DeviceName;
+                string resolvedEncDek = string.IsNullOrWhiteSpace(incomingNamespace.EncDek)
+                    ? existingNamespacesById.GetValueOrDefault(namespaceId)?.EncDek
+                        ?? (string.Equals(resolvedDesktopDeviceId, registration.DesktopDeviceId, StringComparison.Ordinal)
+                            ? registration.EncDek
+                            : string.Empty)
+                    : incomingNamespace.EncDek;
 
                 syncedNamespaces.Add(new NamespaceItemDto
                 {
@@ -359,7 +315,8 @@ namespace TrayApp.Services
                     AccountId = resolvedAccountId,
                     NamespaceId = namespaceId,
                     Namespace = incomingNamespace.Namespace,
-                    Url = incomingNamespace.Url
+                    Url = incomingNamespace.Url,
+                    EncDek = resolvedEncDek
                 });
 
                 Debug.WriteLine($"Synced namespace: {namespaceId} - {incomingNamespace.Namespace}");
@@ -380,57 +337,17 @@ namespace TrayApp.Services
                 !string.IsNullOrWhiteSpace(registration.EncDek);
         }
 
-            private static string NormalizeUrlForComparison(string url)
-            {
-                return string.IsNullOrWhiteSpace(url)
+        private static NamespaceItemDto? FindNamespace(DesktopRegistration registration, string namespaceId)
+        {
+            return registration.Namespaces.FirstOrDefault(item =>
+                string.Equals(item.NamespaceId, namespaceId, StringComparison.Ordinal));
+        }
+
+        private static string NormalizeUrlForComparison(string url)
+        {
+            return string.IsNullOrWhiteSpace(url)
                 ? string.Empty
                 : url.Trim().TrimEnd('/');
-            }
-
-        private static bool TryParseRegistrations(string json, out List<DesktopRegistration>? registrations)
-        {
-            registrations = null;
-
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                return false;
-            }
-
-            try
-            {
-                using JsonDocument document = JsonDocument.Parse(json);
-
-                if (document.RootElement.ValueKind == JsonValueKind.Array)
-                {
-                    registrations = JsonSerializer.Deserialize<List<DesktopRegistration>>(json, BootstrapConfigJsonOptions)
-                        ?? new List<DesktopRegistration>();
-                }
-                else if (document.RootElement.ValueKind == JsonValueKind.Object)
-                {
-                    DesktopRegistration? registration = Transformer.ToRegistrationResponse(json);
-
-                    if (!IsValidRegistration(registration))
-                    {
-                        return false;
-                    }
-
-                    registrations = new List<DesktopRegistration> { registration! };
-                }
-                else
-                {
-                    return false;
-                }
-            }
-            catch (JsonException)
-            {
-                return false;
-            }
-
-            registrations = registrations
-                .Where(IsValidRegistration)
-                .ToList();
-
-            return registrations.Count > 0;
         }
 
         private static DesktopRegistration? SelectRegistration(
@@ -466,43 +383,5 @@ namespace TrayApp.Services
             return Guid.NewGuid().ToString("D");
         }
 
-        private static void EnsureNoCrossUserNamespaceConflicts(IReadOnlyCollection<DesktopRegistration> registrations)
-        {
-            var ownershipByNamespaceKey = new Dictionary<string, DesktopRegistration>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (DesktopRegistration registration in registrations)
-            {
-                string ownerKey = registration.UserKey;
-
-                foreach (NamespaceItemDto namespaceItem in registration.Namespaces)
-                {
-                    if (string.IsNullOrWhiteSpace(namespaceItem.NamespaceId) || string.IsNullOrWhiteSpace(namespaceItem.Url))
-                    {
-                        continue;
-                    }
-
-                    string namespaceKey = CreateNamespaceOwnershipKey(namespaceItem.NamespaceId, namespaceItem.Url);
-
-                    if (ownershipByNamespaceKey.TryGetValue(namespaceKey, out DesktopRegistration? existingOwner) &&
-                        !string.Equals(existingOwner.UserKey, ownerKey, StringComparison.Ordinal))
-                    {
-                        throw new InvalidOperationException(
-                            $"Namespace '{namespaceItem.NamespaceId}' at '{NormalizeNamespaceUrl(namespaceItem.Url)}' is already registered for user '{existingOwner.DisplayUserName}'.");
-                    }
-
-                    ownershipByNamespaceKey[namespaceKey] = registration;
-                }
-            }
-        }
-
-        private static string CreateNamespaceOwnershipKey(string namespaceId, string url)
-        {
-            return $"{namespaceId.Trim()}|{NormalizeNamespaceUrl(url)}";
-        }
-
-        private static string NormalizeNamespaceUrl(string url)
-        {
-            return url.Trim().TrimEnd('/');
-        }
     }
 }

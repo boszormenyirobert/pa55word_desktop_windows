@@ -85,20 +85,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string>? headers = null)
         {
             string json = JsonSerializer.Serialize(payload);
-            using var request = CreateJsonPostRequest(endpoint, json, headers);
-            LogRequest(request, json, "[HTTP-POST]");
-            using var response = await _httpClient.SendAsync(request);
-            string responseBody = await response.Content.ReadAsStringAsync();
-            LogResponse(response, endpoint, responseBody, "[HTTP-POST]");
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new ApiRequestException(
-                    HttpMethod.Post,
-                    endpoint,
-                    response.StatusCode,
-                    responseBody);
-            }
+            await SendJsonAsync(HttpMethod.Post, endpoint, json, headers, "[HTTP-POST]").ConfigureAwait(false);
         }
 
         public async Task PutJsonAsync<T>(
@@ -107,20 +94,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string>? headers = null)
         {
             string json = JsonSerializer.Serialize(payload);
-            using var request = CreateJsonPutRequest(endpoint, json, headers);
-            LogRequest(request, json, "[HTTP-PUT]");
-            using var response = await _httpClient.SendAsync(request);
-            string responseBody = await response.Content.ReadAsStringAsync();
-            LogResponse(response, endpoint, responseBody, "[HTTP-PUT]");
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new ApiRequestException(
-                    HttpMethod.Put,
-                    endpoint,
-                    response.StatusCode,
-                    responseBody);
-            }
+            await SendJsonAsync(HttpMethod.Put, endpoint, json, headers, "[HTTP-PUT]").ConfigureAwait(false);
         }
 
         public async Task<TResponse?> PutJsonAsync<TRequest, TResponse>(
@@ -129,20 +103,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string>? headers = null)
         {
             string json = JsonSerializer.Serialize(payload);
-            using var request = CreateJsonPutRequest(endpoint, json, headers);
-            LogRequest(request, json, "[HTTP-PUT]");
-            using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
-            string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            LogResponse(response, endpoint, responseBody, "[HTTP-PUT]");
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new ApiRequestException(
-                    HttpMethod.Put,
-                    endpoint,
-                    response.StatusCode,
-                    responseBody);
-            }
+            string responseBody = await SendJsonAsync(HttpMethod.Put, endpoint, json, headers, "[HTTP-PUT]").ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(responseBody))
             {
@@ -163,20 +124,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string>? headers = null)
         {
             string json = JsonSerializer.Serialize(payload);
-            using var request = DeleteJsonRequest(endpoint, json, headers);
-            LogRequest(request, json, "[HTTP-DELETE]");
-            using var response = await _httpClient.SendAsync(request);
-            string responseBody = await response.Content.ReadAsStringAsync();
-            LogResponse(response, endpoint, responseBody, "[HTTP-DELETE]");
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new ApiRequestException(
-                    HttpMethod.Delete,
-                    endpoint,
-                    response.StatusCode,
-                    responseBody);
-            }
+            await SendJsonAsync(HttpMethod.Delete, endpoint, json, headers, "[HTTP-DELETE]").ConfigureAwait(false);
         }
 
         public async Task<TResponse?> DeleteJsonAsync<TRequest, TResponse>(
@@ -185,20 +133,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string>? headers = null)
         {
             string json = JsonSerializer.Serialize(payload);
-            using var request = DeleteJsonRequest(endpoint, json, headers);
-            LogRequest(request, json, "[HTTP-DELETE]");
-            using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
-            string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            LogResponse(response, endpoint, responseBody, "[HTTP-DELETE]");
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new ApiRequestException(
-                    HttpMethod.Delete,
-                    endpoint,
-                    response.StatusCode,
-                    responseBody);
-            }
+            string responseBody = await SendJsonAsync(HttpMethod.Delete, endpoint, json, headers, "[HTTP-DELETE]").ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(responseBody))
             {
@@ -219,20 +154,7 @@ namespace TrayApp.Services
             IReadOnlyDictionary<string, string>? headers)
         {
             string json = JsonSerializer.Serialize(payload);
-            using var request = CreateJsonPostRequest(endpoint, json, headers);
-            LogRequest(request, json, "[HTTP-POST]");
-            using var response = await _httpClient.SendAsync(request);
-            string responseBody = await response.Content.ReadAsStringAsync();
-            LogResponse(response, endpoint, responseBody, "[HTTP-POST]");
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new ApiRequestException(
-                    HttpMethod.Post,
-                    endpoint,
-                    response.StatusCode,
-                    responseBody);
-            }
+            string responseBody = await SendJsonAsync(HttpMethod.Post, endpoint, json, headers, "[HTTP-POST]").ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(responseBody))
             {
@@ -283,49 +205,30 @@ namespace TrayApp.Services
                 });
         }
 
-        private static HttpRequestMessage CreateJsonPostRequest(
+        private async Task<string> SendJsonAsync(
+            HttpMethod method,
             string endpoint,
             string json,
-            IReadOnlyDictionary<string, string>? headers)
+            IReadOnlyDictionary<string, string>? headers,
+            string logPrefix)
         {
-            var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+            using var request = new HttpRequestMessage(method, endpoint)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
-
             AddHeaders(request, headers);
+            LogRequest(request, json, logPrefix);
 
-            return request;
-        }
+            using HttpResponseMessage response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+            string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            LogResponse(response, endpoint, responseBody, logPrefix);
 
-        private static HttpRequestMessage CreateJsonPutRequest(
-            string endpoint,
-            string json,
-            IReadOnlyDictionary<string, string>? headers)
-        {
-            var request = new HttpRequestMessage(HttpMethod.Put, endpoint)
+            if (!response.IsSuccessStatusCode)
             {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
-            };
+                throw new ApiRequestException(method, endpoint, response.StatusCode, responseBody);
+            }
 
-            AddHeaders(request, headers);
-
-            return request;
-        }
-
-        private static HttpRequestMessage DeleteJsonRequest(
-            string endpoint,
-            string json,
-            IReadOnlyDictionary<string, string>? headers)
-        {
-            var request = new HttpRequestMessage(HttpMethod.Delete, endpoint)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
-            };
-
-            AddHeaders(request, headers);
-
-            return request;
+            return responseBody;
         }
         
         private static void AddHeaders(

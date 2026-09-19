@@ -16,4 +16,8 @@
     <Folder Include="tools\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="TrayApp.Tests\**\*.cs" />
+  </ItemGroup>
+
 </Project>

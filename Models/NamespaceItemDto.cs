@@ -31,5 +31,8 @@ namespace TrayApp.Models
 
         [JsonPropertyName("url")]
         public string Url { get; set; } = string.Empty;
+
+        [JsonPropertyName("encDek")]
+        public string EncDek { get; set; } = string.Empty;
     }
 }
