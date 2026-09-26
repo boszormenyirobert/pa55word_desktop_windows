@@ -11,9 +11,7 @@ namespace TrayApp.TrayMenu.Views
                 Description = "Choose an account action.",
                 InsightTitle = string.Empty,
                 InsightBody = string.Empty,
-                SelectionLayout = TrayMenuSelectionLayout.SettingsUserActions,
-                HideMetricsCard = true,
-                HideInsightTitle = true
+                SelectionLayout = TrayMenuSelectionLayout.SettingsUserActions
             };
         }
     }

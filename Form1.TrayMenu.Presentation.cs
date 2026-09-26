@@ -54,32 +54,10 @@ namespace TrayApp
 
         private void ConfigureQuickPanelDragHandle(Control control)
         {
-            control.Cursor = Cursors.SizeAll;
+            control.Cursor = Cursors.Default;
             control.MouseDown += quickPanelContainer_MouseDown;
             control.MouseMove += quickPanelContainer_MouseMove;
             control.MouseUp += quickPanelContainer_MouseUp;
-        }
-
-        private static void quickPanelMoveHandle_Paint(object? sender, PaintEventArgs e)
-        {
-            Color iconColor = sender is Panel panel && panel.BackColor == Color.FromArgb(120, 205, 0)
-                ? Color.FromArgb(24, 30, 24)
-                : Color.FromArgb(171, 174, 211);
-            using var pen = new Pen(iconColor, 1.8F);
-            pen.StartCap = System.Drawing.Drawing2D.LineCap.Round;
-            pen.EndCap = System.Drawing.Drawing2D.LineCap.Round;
-
-            const int center = 14;
-            e.Graphics.DrawLine(pen, center, 6, center, 22);
-            e.Graphics.DrawLine(pen, 6, center, 22, center);
-            e.Graphics.DrawLine(pen, center, 6, 11, 9);
-            e.Graphics.DrawLine(pen, center, 6, 17, 9);
-            e.Graphics.DrawLine(pen, center, 22, 11, 19);
-            e.Graphics.DrawLine(pen, center, 22, 17, 19);
-            e.Graphics.DrawLine(pen, 6, center, 9, 11);
-            e.Graphics.DrawLine(pen, 6, center, 9, 17);
-            e.Graphics.DrawLine(pen, 22, center, 19, 11);
-            e.Graphics.DrawLine(pen, 22, center, 19, 17);
         }
 
         private void quickPanelContainer_MouseDown(object? sender, MouseEventArgs e)
@@ -219,5 +197,31 @@ namespace TrayApp
 
             public override Color MenuItemPressedGradientEnd => Color.FromArgb(53, 104, 147);
         }
+
+        private sealed class SettingsHoverMenuRenderer : ToolStripProfessionalRenderer
+        {
+            public SettingsHoverMenuRenderer(ProfessionalColorTable colorTable)
+                : base(colorTable)
+            {
+            }
+
+            protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+            {
+                Rectangle textBounds = e.TextRectangle;
+                textBounds.Y += 8;
+
+                TextRenderer.DrawText(
+                    e.Graphics,
+                    e.Text,
+                    e.TextFont,
+                    textBounds,
+                    e.TextColor,
+                    TextFormatFlags.Left |
+                    TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.SingleLine |
+                    TextFormatFlags.NoPrefix);
+            }
+        }
+
     }
 }

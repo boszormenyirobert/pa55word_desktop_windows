@@ -562,13 +562,6 @@ namespace TrayApp
             bool isAuthorizedForActiveNamespace = _authenticationService.IsAuthorizedForActiveNamespace;
             bool canLogin = showAuthenticationActions && !isAuthorizedForActiveNamespace;
             bool canLogout = showAuthenticationActions && isAuthorized;
-            bool usersSectionActive = _trayMenuController?.ActiveSection == TrayMenuSection.Users;
-            bool serversSectionActive = _trayMenuController?.ActiveSection == TrayMenuSection.Servers;
-            bool loginSectionActive = _trayMenuController?.ActiveSection == TrayMenuSection.Login;
-            bool hidePrimaryAction = _trayMenuController?.ActiveSection is
-                TrayMenuSection.SettingsUsers or
-                TrayMenuSection.SettingsServers or
-                TrayMenuSection.Accounts;
             bool expandedTrayView = _showExpandedTrayMenu && _isDeviceRegistered;
             bool hasUserSelectionItems = _userSelectionToolStripMenuItem.DropDownItems.Count > 0;
             bool hasNamespaceSelectionItems = _namespaceSelectionToolStripMenuItem.DropDownItems.Count > 0;
@@ -581,18 +574,12 @@ namespace TrayApp
             _openTrayPanelToolStripMenuItem.Text = "open registration";
             _userSelectionToolStripMenuItem.Visible = !expandedTrayView && !isAuthorized && hasUserSelectionItems;
             _namespaceSelectionToolStripMenuItem.Visible = !expandedTrayView && hasNamespaceSelectionItems;
-            _quickPanelPrimaryActionButton.Text = canLogin ? "Login" : "Logout";
-            _quickPanelPrimaryActionButton.Visible = !serversSectionActive && !loginSectionActive && !hidePrimaryAction;
-            _quickPanelPrimaryActionButton.Enabled = (canLogin || canLogout) && !_authenticationInProgress;
+            _quickPanelPrimaryActionButton.Text = canLogout ? "Logout" : "Login";
+            _quickPanelPrimaryActionButton.Visible = canLogout;
+            _quickPanelPrimaryActionButton.Enabled = canLogout && !_authenticationInProgress;
             _quickPanelRefreshButton.Enabled = showAuthenticationActions && !_quickPanelRefreshInProgress;
 
-            if (canLogin && !_authenticationInProgress)
-            {
-                _quickPanelPrimaryActionButton.BackColor = Color.FromArgb(120, 205, 0);
-                _quickPanelPrimaryActionButton.ForeColor = Color.FromArgb(24, 30, 24);
-                _quickPanelPrimaryActionButton.FlatAppearance.BorderColor = Color.FromArgb(120, 205, 0);
-            }
-            else if (canLogout && !_authenticationInProgress)
+            if (canLogout && !_authenticationInProgress)
             {
                 _quickPanelPrimaryActionButton.BackColor = Color.FromArgb(214, 88, 88);
                 _quickPanelPrimaryActionButton.ForeColor = Color.White;

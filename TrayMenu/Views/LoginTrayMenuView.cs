@@ -12,9 +12,7 @@ namespace TrayApp.TrayMenu.Views
                 InsightTitle = string.Empty,
                 InsightBody = string.Empty,
                 SelectionLayout = TrayMenuSelectionLayout.LoginSelectors,
-                ShowUserSelector = context.RegisteredUserCount > 1,
-                HideMetricsCard = true,
-                HideInsightTitle = true
+                ShowUserSelector = context.RegisteredUserCount > 1
             };
         }
     }

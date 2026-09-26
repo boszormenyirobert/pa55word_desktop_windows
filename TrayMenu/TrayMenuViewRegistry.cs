@@ -13,9 +13,8 @@ namespace TrayApp.TrayMenu
                 [TrayMenuSection.Login] = new LoginTrayMenuView(),
                 [TrayMenuSection.SettingsUsers] = new SettingsUsersTrayMenuView(),
                 [TrayMenuSection.SettingsServers] = new SettingsServersTrayMenuView(),
-                [TrayMenuSection.Users] = new UsersTrayMenuView(),
                 [TrayMenuSection.Accounts] = new AccountsTrayMenuView(),
-                [TrayMenuSection.Servers] = new ServersTrayMenuView(),
+                [TrayMenuSection.Servers] = new SettingsServersTrayMenuView(),
                 [TrayMenuSection.Credentials] = new CredentialsTrayMenuView()
             };
         }

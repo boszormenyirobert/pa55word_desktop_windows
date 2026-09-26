@@ -11,9 +11,7 @@ namespace TrayApp.TrayMenu.Views
                 Description = "Choose a server action.",
                 InsightTitle = string.Empty,
                 InsightBody = string.Empty,
-                SelectionLayout = TrayMenuSelectionLayout.SettingsServerActions,
-                HideMetricsCard = true,
-                HideInsightTitle = true
+                SelectionLayout = TrayMenuSelectionLayout.SettingsServerActions
             };
         }
     }

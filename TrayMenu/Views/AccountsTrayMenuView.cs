@@ -11,9 +11,7 @@ namespace TrayApp.TrayMenu.Views
                 Description = "Accounts stored in the local configuration.",
                 InsightTitle = string.Empty,
                 InsightBody = string.Empty,
-                SelectionLayout = TrayMenuSelectionLayout.HomeSummary,
-                HideMetricsCard = true,
-                HideInsightTitle = true
+                SelectionLayout = TrayMenuSelectionLayout.HomeSummary
             };
         }
     }
