@@ -184,6 +184,18 @@ namespace TrayApp
                 return;
             }
 
+            if (_showInlineUserRegistration)
+            {
+                _lastTrayMessage = "User registration is complete.";
+                _lastTrayMessageIcon = ToolTipIcon.Info;
+                _lastTrayStateUpdatedAt = DateTimeOffset.Now;
+                ResetInlineUserRegistration();
+                RefreshQuickPanelSelections();
+                UpdateQuickPanelState();
+                UpdateAuthenticationMenuItems();
+                return;
+            }
+
             if (_showInlineServerRegistration &&
                 _registrationPromptMode is RegistrationPromptMode.ServerRegistration or RegistrationPromptMode.NewServerRegistration)
             {
@@ -207,6 +219,16 @@ namespace TrayApp
             if (InvokeRequired)
             {
                 BeginInvoke(new Action<string>(OnRegistrationFailed), message);
+                return;
+            }
+
+            if (_showInlineUserRegistration)
+            {
+                _inlineUserRegistrationSubmitting = false;
+                _inlineUserRegistrationAwaitingCompletion = false;
+                _quickPanelUserRegistrationSubmitButton.Enabled = true;
+                _quickPanelUserRegistrationStatusLabel.Text = message;
+                UpdateQuickPanelState();
                 return;
             }
 
@@ -251,7 +273,7 @@ namespace TrayApp
             _registrationHostedInTray = false;
             _isDeviceRegistered = true;
             EnsureRegisteredServicesStarted();
-            _trayMenuController?.SetActiveSection(TrayMenuSection.Overview);
+            _trayMenuController?.SetActiveSection(TrayMenuSection.Login);
             _lastTrayMessage = "Desktop registration is complete.";
             _lastTrayMessageIcon = ToolTipIcon.Info;
             _lastTrayStateUpdatedAt = DateTimeOffset.Now;
@@ -542,6 +564,11 @@ namespace TrayApp
             bool canLogout = showAuthenticationActions && isAuthorized;
             bool usersSectionActive = _trayMenuController?.ActiveSection == TrayMenuSection.Users;
             bool serversSectionActive = _trayMenuController?.ActiveSection == TrayMenuSection.Servers;
+            bool loginSectionActive = _trayMenuController?.ActiveSection == TrayMenuSection.Login;
+            bool hidePrimaryAction = _trayMenuController?.ActiveSection is
+                TrayMenuSection.SettingsUsers or
+                TrayMenuSection.SettingsServers or
+                TrayMenuSection.Accounts;
             bool expandedTrayView = _showExpandedTrayMenu && _isDeviceRegistered;
             bool hasUserSelectionItems = _userSelectionToolStripMenuItem.DropDownItems.Count > 0;
             bool hasNamespaceSelectionItems = _namespaceSelectionToolStripMenuItem.DropDownItems.Count > 0;
@@ -555,12 +582,8 @@ namespace TrayApp
             _userSelectionToolStripMenuItem.Visible = !expandedTrayView && !isAuthorized && hasUserSelectionItems;
             _namespaceSelectionToolStripMenuItem.Visible = !expandedTrayView && hasNamespaceSelectionItems;
             _quickPanelPrimaryActionButton.Text = canLogin ? "Login" : "Logout";
-            _quickPanelPrimaryActionButton.Visible = !serversSectionActive;
+            _quickPanelPrimaryActionButton.Visible = !serversSectionActive && !loginSectionActive && !hidePrimaryAction;
             _quickPanelPrimaryActionButton.Enabled = (canLogin || canLogout) && !_authenticationInProgress;
-            _quickPanelRegisterServerButton.Visible = serversSectionActive;
-            _quickPanelRegisterServerButton.Enabled = !_authenticationInProgress &&
-                serversSectionActive && canLogout;
-            _quickPanelRegisterServerButton.Text = "Register server";
             _quickPanelRefreshButton.Enabled = showAuthenticationActions && !_quickPanelRefreshInProgress;
 
             if (canLogin && !_authenticationInProgress)
@@ -692,7 +715,13 @@ namespace TrayApp
                 return;
             }
 
-            ShowServerRegistrationPrompt();
+            if (!IsQuickPanelOpen())
+            {
+                ShowExpandedTrayMenu();
+            }
+
+            _trayMenuController?.SetActiveSection(TrayMenuSection.Servers, triggerStateChanged: true);
+            ShowInlineServerRegistration(InlineServerRegistrationMode.NewServer);
         }
 
         private async void loginToolStripMenuItem_Click(object? sender, EventArgs e)

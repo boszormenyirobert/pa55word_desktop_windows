@@ -39,6 +39,8 @@ namespace TrayApp.TrayMenu
 
         public TrayMenuSelectionLayout SelectionLayout { get; init; }
 
+        public bool ShowUserSelector { get; init; } = true;
+
         public IReadOnlyList<string> SummaryLines { get; init; } = Array.Empty<string>();
 
         public string? AccountMetricOverride { get; init; }

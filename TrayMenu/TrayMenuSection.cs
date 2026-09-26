@@ -2,7 +2,9 @@ namespace TrayApp.TrayMenu
 {
     internal enum TrayMenuSection
     {
-        Overview,
+        Login,
+        SettingsUsers,
+        SettingsServers,
         Users,
         Accounts,
         Servers,

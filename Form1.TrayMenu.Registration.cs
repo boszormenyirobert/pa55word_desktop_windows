@@ -56,7 +56,7 @@ namespace TrayApp
         {
             _bootstrapRegistrationService.CancelRegistrationPolling();
             ResetInlineServerRegistrationState(clearInputs: true);
-            _trayMenuController?.SetActiveSection(TrayMenuSection.Servers);
+            _trayMenuController?.SetActiveSection(TrayMenuSection.SettingsServers);
             UpdateQuickPanelState();
         }
 
@@ -68,6 +68,100 @@ namespace TrayApp
             }
 
             ShowBaseUrlPrompt(showAsTrayPrompt: true);
+        }
+
+        private void ShowInlineUserRegistration()
+        {
+            if (_authenticationInProgress ||
+                _authenticationService.IsAuthorizedForActiveNamespace ||
+                _inlineUserRegistrationSubmitting ||
+                _inlineUserRegistrationAwaitingCompletion)
+            {
+                return;
+            }
+
+            _showInlineUserRegistration = true;
+            _quickPanelUserRegistrationStatusLabel.Text = string.Empty;
+            _quickPanelUserRegistrationQrPictureBox.Image = null;
+            _quickPanelUserRegistrationQrPictureBox.Visible = false;
+            _quickPanelUserRegistrationSubmitButton.Text = "Continue";
+
+            try
+            {
+                _quickPanelUserRegistrationUrlTextBox.Text = AppEnvironment.BackendBaseUrl;
+            }
+            catch
+            {
+                _quickPanelUserRegistrationUrlTextBox.Text = _bootstrapRegistrationService.GetBootstrapBaseUrl();
+            }
+
+            _quickPanelUserRegistrationNameTextBox.Text = string.Empty;
+            UpdateQuickPanelState();
+            _quickPanelUserRegistrationNameTextBox.Focus();
+        }
+
+        private void ResetInlineUserRegistration()
+        {
+            _showInlineUserRegistration = false;
+            _inlineUserRegistrationSubmitting = false;
+            _inlineUserRegistrationAwaitingCompletion = false;
+            _quickPanelUserRegistrationQrPictureBox.Image = null;
+            _quickPanelUserRegistrationQrPictureBox.Visible = false;
+            _quickPanelUserRegistrationStatusLabel.Text = string.Empty;
+            _quickPanelUserRegistrationSubmitButton.Text = "Continue";
+        }
+
+        private void quickPanelUserRegistrationBackButton_Click(object? sender, EventArgs e)
+        {
+            _bootstrapRegistrationService.CancelRegistrationPolling();
+            ResetInlineUserRegistration();
+            UpdateQuickPanelState();
+        }
+
+        private async void quickPanelUserRegistrationSubmitButton_Click(object? sender, EventArgs e)
+        {
+            if (_inlineUserRegistrationSubmitting || _inlineUserRegistrationAwaitingCompletion)
+            {
+                return;
+            }
+
+            try
+            {
+                _inlineUserRegistrationSubmitting = true;
+                _quickPanelUserRegistrationSubmitButton.Enabled = false;
+                _quickPanelUserRegistrationStatusLabel.Text = "Generating QR code...";
+
+                await _bootstrapRegistrationService
+                    .PrepareRegistrationQrAsync(
+                        _quickPanelUserRegistrationUrlTextBox.Text,
+                        _quickPanelUserRegistrationNameTextBox.Text)
+                    .ConfigureAwait(true);
+
+                Bitmap? qrCode = AppServices.Qr.GetQrCode();
+                if (qrCode == null)
+                {
+                    throw new InvalidOperationException("QR code is empty.");
+                }
+
+                _quickPanelUserRegistrationQrPictureBox.Image = qrCode;
+                _quickPanelUserRegistrationQrPictureBox.Visible = true;
+                _inlineUserRegistrationAwaitingCompletion = true;
+                _quickPanelUserRegistrationSubmitButton.Text = "QR ready";
+                _quickPanelUserRegistrationStatusLabel.Text = "QR generated. Waiting for mobile confirmation.";
+                _lastTrayMessage = "User registration QR generated. Waiting for mobile confirmation.";
+                _lastTrayMessageIcon = ToolTipIcon.Info;
+                _lastTrayStateUpdatedAt = DateTimeOffset.Now;
+                _ = StartPollingAfterRenderAsync();
+            }
+            catch (Exception exception)
+            {
+                _quickPanelUserRegistrationStatusLabel.Text = exception.Message;
+            }
+            finally
+            {
+                _inlineUserRegistrationSubmitting = false;
+                _quickPanelUserRegistrationSubmitButton.Enabled = !_inlineUserRegistrationAwaitingCompletion;
+            }
         }
 
         private async void quickPanelServerRegistrationSubmitButton_Click(object? sender, EventArgs e)

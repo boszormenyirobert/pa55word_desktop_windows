@@ -10,7 +10,9 @@ namespace TrayApp.TrayMenu
         {
             _views = new Dictionary<TrayMenuSection, ITrayMenuView>
             {
-                [TrayMenuSection.Overview] = new HomeTrayMenuView(),
+                [TrayMenuSection.Login] = new LoginTrayMenuView(),
+                [TrayMenuSection.SettingsUsers] = new SettingsUsersTrayMenuView(),
+                [TrayMenuSection.SettingsServers] = new SettingsServersTrayMenuView(),
                 [TrayMenuSection.Users] = new UsersTrayMenuView(),
                 [TrayMenuSection.Accounts] = new AccountsTrayMenuView(),
                 [TrayMenuSection.Servers] = new ServersTrayMenuView(),
@@ -22,7 +24,7 @@ namespace TrayApp.TrayMenu
         {
             return _views.TryGetValue(section, out ITrayMenuView? view)
                 ? view.Build(context)
-                : _views[TrayMenuSection.Overview].Build(context);
+                : _views[TrayMenuSection.Login].Build(context);
         }
     }
 }

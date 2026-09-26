@@ -12,7 +12,7 @@ namespace TrayApp.TrayMenu
         {
             _applyButtonState = applyButtonState;
             _stateChanged = stateChanged;
-            ActiveSection = TrayMenuSection.Overview;
+            ActiveSection = TrayMenuSection.Login;
         }
 
         public TrayMenuSection ActiveSection { get; private set; }

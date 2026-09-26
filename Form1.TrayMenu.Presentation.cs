@@ -62,7 +62,10 @@ namespace TrayApp
 
         private static void quickPanelMoveHandle_Paint(object? sender, PaintEventArgs e)
         {
-            using var pen = new Pen(Color.FromArgb(171, 174, 211), 1.8F);
+            Color iconColor = sender is Panel panel && panel.BackColor == Color.FromArgb(120, 205, 0)
+                ? Color.FromArgb(24, 30, 24)
+                : Color.FromArgb(171, 174, 211);
+            using var pen = new Pen(iconColor, 1.8F);
             pen.StartCap = System.Drawing.Drawing2D.LineCap.Round;
             pen.EndCap = System.Drawing.Drawing2D.LineCap.Round;
 
