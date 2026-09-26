@@ -12,6 +12,7 @@ namespace TrayApp.TrayMenu
             {
                 [TrayMenuSection.Overview] = new HomeTrayMenuView(),
                 [TrayMenuSection.Users] = new UsersTrayMenuView(),
+                [TrayMenuSection.Accounts] = new AccountsTrayMenuView(),
                 [TrayMenuSection.Servers] = new ServersTrayMenuView(),
                 [TrayMenuSection.Credentials] = new CredentialsTrayMenuView()
             };

@@ -4,6 +4,7 @@ namespace TrayApp.TrayMenu
     {
         Overview,
         Users,
+        Accounts,
         Servers,
         Credentials
     }
