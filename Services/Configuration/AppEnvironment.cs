@@ -93,74 +93,86 @@ namespace TrayApp.Services
 
         public static string GetActiveNamespaceAccountIdOrDefault(string fallbackAccountId)
         {
-            if (string.IsNullOrWhiteSpace(fallbackAccountId))
-            {
-                throw new ArgumentException("Fallback account id must not be empty.", nameof(fallbackAccountId));
-            }
+            _ = fallbackAccountId;
+            return GetActiveNamespaceAccountId();
+        }
 
-            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
-            {
-                return fallbackAccountId;
-            }
-
+        public static string GetActiveNamespaceAccountId()
+        {
             NamespaceItemDto activeNamespace = GetActiveNamespace();
-            return string.IsNullOrWhiteSpace(activeNamespace.AccountId)
-                ? fallbackAccountId
-                : activeNamespace.AccountId;
+
+            if (string.IsNullOrWhiteSpace(activeNamespace.AccountId))
+            {
+                throw new InvalidDataException("Active namespace does not contain a valid accountId value.");
+            }
+
+            return activeNamespace.AccountId;
         }
 
         public static string GetPrimaryNamespaceAccountIdOrDefault(string fallbackAccountId)
         {
-            if (string.IsNullOrWhiteSpace(fallbackAccountId))
+            _ = fallbackAccountId;
+            return GetPrimaryNamespaceAccountId();
+        }
+
+        public static string GetPrimaryNamespaceAccountId()
+        {
+            DesktopRegistration registration = GetActiveRegistration();
+
+            if (registration.Namespaces.Count == 0)
             {
-                throw new ArgumentException("Fallback account id must not be empty.", nameof(fallbackAccountId));
+                throw new InvalidDataException($"Config file '{ConfigFileName}' does not contain any namespaces entries.");
             }
 
-            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            string accountId = registration.Namespaces[0].AccountId;
+            if (string.IsNullOrWhiteSpace(accountId))
             {
-                return fallbackAccountId;
+                throw new InvalidDataException("Primary namespace does not contain a valid accountId value.");
             }
 
-            NamespaceItemDto primaryNamespace = registration.Namespaces[0];
-            return string.IsNullOrWhiteSpace(primaryNamespace.AccountId)
-                ? fallbackAccountId
-                : primaryNamespace.AccountId;
+            return accountId;
         }
 
         public static string GetActiveNamespaceDesktopDeviceIdOrDefault(string fallbackDesktopDeviceId)
         {
-            if (string.IsNullOrWhiteSpace(fallbackDesktopDeviceId))
-            {
-                throw new ArgumentException("Fallback desktop device id must not be empty.", nameof(fallbackDesktopDeviceId));
-            }
+            _ = fallbackDesktopDeviceId;
+            return GetActiveNamespaceDesktopDeviceId();
+        }
 
-            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
-            {
-                return fallbackDesktopDeviceId;
-            }
-
+        public static string GetActiveNamespaceDesktopDeviceId()
+        {
             NamespaceItemDto activeNamespace = GetActiveNamespace();
-            return string.IsNullOrWhiteSpace(activeNamespace.DesktopDeviceId)
-                ? fallbackDesktopDeviceId
-                : activeNamespace.DesktopDeviceId;
+
+            if (string.IsNullOrWhiteSpace(activeNamespace.DesktopDeviceId))
+            {
+                throw new InvalidDataException("Active namespace does not contain a valid desktopDeviceId value.");
+            }
+
+            return activeNamespace.DesktopDeviceId;
         }
 
         public static string GetPrimaryNamespaceDesktopDeviceIdOrDefault(string fallbackDesktopDeviceId)
         {
-            if (string.IsNullOrWhiteSpace(fallbackDesktopDeviceId))
+            _ = fallbackDesktopDeviceId;
+            return GetPrimaryNamespaceDesktopDeviceId();
+        }
+
+        public static string GetPrimaryNamespaceDesktopDeviceId()
+        {
+            DesktopRegistration registration = GetActiveRegistration();
+
+            if (registration.Namespaces.Count == 0)
             {
-                throw new ArgumentException("Fallback desktop device id must not be empty.", nameof(fallbackDesktopDeviceId));
+                throw new InvalidDataException($"Config file '{ConfigFileName}' does not contain any namespaces entries.");
             }
 
-            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            string desktopDeviceId = registration.Namespaces[0].DesktopDeviceId;
+            if (string.IsNullOrWhiteSpace(desktopDeviceId))
             {
-                return fallbackDesktopDeviceId;
+                throw new InvalidDataException("Primary namespace does not contain a valid desktopDeviceId value.");
             }
 
-            NamespaceItemDto primaryNamespace = registration.Namespaces[0];
-            return string.IsNullOrWhiteSpace(primaryNamespace.DesktopDeviceId)
-                ? fallbackDesktopDeviceId
-                : primaryNamespace.DesktopDeviceId;
+            return desktopDeviceId;
         }
 
         public static string GetActiveNamespaceDeviceIdOrDefault(string fallbackDesktopDeviceId)
@@ -175,38 +187,44 @@ namespace TrayApp.Services
 
         public static string GetActiveNamespaceUrlOrDefault(string fallbackBaseUrl)
         {
-            if (string.IsNullOrWhiteSpace(fallbackBaseUrl))
-            {
-                throw new ArgumentException("Fallback base url must not be empty.", nameof(fallbackBaseUrl));
-            }
+            _ = fallbackBaseUrl;
+            return GetActiveNamespaceUrl();
+        }
 
-            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
-            {
-                return fallbackBaseUrl;
-            }
-
+        public static string GetActiveNamespaceUrl()
+        {
             NamespaceItemDto activeNamespace = GetActiveNamespace();
-            return string.IsNullOrWhiteSpace(activeNamespace.Url)
-                ? fallbackBaseUrl
-                : activeNamespace.Url.TrimEnd('/');
+
+            if (string.IsNullOrWhiteSpace(activeNamespace.Url))
+            {
+                throw new InvalidDataException("Active namespace does not contain a valid url value.");
+            }
+
+            return activeNamespace.Url.TrimEnd('/');
         }
 
         public static string GetPrimaryNamespaceUrlOrDefault(string fallbackBaseUrl)
         {
-            if (string.IsNullOrWhiteSpace(fallbackBaseUrl))
+            _ = fallbackBaseUrl;
+            return GetPrimaryNamespaceUrl();
+        }
+
+        public static string GetPrimaryNamespaceUrl()
+        {
+            DesktopRegistration registration = GetActiveRegistration();
+
+            if (registration.Namespaces.Count == 0)
             {
-                throw new ArgumentException("Fallback base url must not be empty.", nameof(fallbackBaseUrl));
+                throw new InvalidDataException($"Config file '{ConfigFileName}' does not contain any namespaces entries.");
             }
 
-            if (!TryReadActiveRegistration(out DesktopRegistration? registration) || registration is not { Namespaces.Count: > 0 })
+            string baseUrl = registration.Namespaces[0].Url;
+            if (string.IsNullOrWhiteSpace(baseUrl))
             {
-                return fallbackBaseUrl;
+                throw new InvalidDataException("Primary namespace does not contain a valid url value.");
             }
 
-            NamespaceItemDto primaryNamespace = registration.Namespaces[0];
-            return string.IsNullOrWhiteSpace(primaryNamespace.Url)
-                ? fallbackBaseUrl
-                : primaryNamespace.Url.TrimEnd('/');
+            return baseUrl.TrimEnd('/');
         }
 
         private static NamespaceItemDto GetActiveNamespace()

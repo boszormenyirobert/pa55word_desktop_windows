@@ -43,6 +43,11 @@ namespace TrayApp
         private readonly FlowLayoutPanel _quickPanelNavigationPanel = new();
         private readonly Button _quickPanelOverviewNavButton = new();
         private readonly Button _quickPanelAccountsNavButton = new();
+        private readonly ContextMenuStrip _serversHoverMenu = new();
+        private readonly ToolStripMenuItem _serversNewUserRegistrationMenuItem = new("new user registration");
+        private readonly ToolStripMenuItem _serversNewServerRegistrationMenuItem = new("new server registration");
+        private readonly ToolStripMenuItem _serversSynchronizeRegisteredServerMenuItem = new("synchronize registered server");
+        private readonly FlowLayoutPanel _quickPanelAccountsPanel = new();
         private readonly Button _quickPanelSecurityNavButton = new();
         private readonly Label _quickPanelCollectionSectionLabel = new();
         private readonly FlowLayoutPanel _quickPanelCollectionPanel = new();
@@ -325,10 +330,15 @@ namespace TrayApp
             ConfigureQuickPanelNavigationButton(_quickPanelOverviewNavButton, "Home");
             ConfigureQuickPanelNavigationButton(_quickPanelAccountsNavButton, "Users");
             ConfigureQuickPanelNavigationButton(_quickPanelSecurityNavButton, "Servers");
+            InitializeServersHoverMenu();
 
             _quickPanelNavigationPanel.Controls.Add(_quickPanelOverviewNavButton);
             _quickPanelNavigationPanel.Controls.Add(_quickPanelAccountsNavButton);
             _quickPanelNavigationPanel.Controls.Add(_quickPanelSecurityNavButton);
+
+            Button accountsButton = new();
+            ConfigureQuickPanelNavigationButton(accountsButton, "Accounts");
+            _quickPanelNavigationPanel.Controls.Add(accountsButton);
 
             _quickPanelCollectionSectionLabel.AutoSize = true;
             _quickPanelCollectionSectionLabel.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
@@ -354,6 +364,7 @@ namespace TrayApp
             _trayMenuController.Register(TrayMenuSection.Overview, _quickPanelOverviewNavButton);
             _trayMenuController.Register(TrayMenuSection.Users, _quickPanelAccountsNavButton);
             _trayMenuController.Register(TrayMenuSection.Servers, _quickPanelSecurityNavButton);
+            _trayMenuController.Register(TrayMenuSection.Accounts, accountsButton);
             _trayMenuController.Register(TrayMenuSection.Credentials, _quickPanelCredentialsNavButton);
 
             _quickPanelActionSectionLabel.AutoSize = true;
@@ -608,6 +619,14 @@ namespace TrayApp
             _quickPanelDetailPanel.Controls.Add(_quickPanelInsightCard);
             _quickPanelDetailPanel.Controls.Add(_quickPanelCredentialWorkspacePanel);
 
+            _quickPanelAccountsPanel.FlowDirection = FlowDirection.TopDown;
+            _quickPanelAccountsPanel.WrapContents = false;
+            _quickPanelAccountsPanel.AutoScroll = true;
+            _quickPanelAccountsPanel.Location = new Point(32, 152);
+            _quickPanelAccountsPanel.Size = new Size(578, 390);
+            _quickPanelAccountsPanel.Visible = false;
+            _quickPanelDetailPanel.Controls.Add(_quickPanelAccountsPanel);
+
             _quickPanelContainer.Controls.Add(_quickPanelMenuPanel);
             _quickPanelContainer.Controls.Add(_quickPanelDividerPanel);
             _quickPanelContainer.Controls.Add(_quickPanelDetailPanel);
@@ -630,6 +649,82 @@ namespace TrayApp
             button.Padding = new Padding(12, 0, 12, 0);
             button.Text = text;
             button.UseVisualStyleBackColor = false;
+        }
+
+        private void InitializeServersHoverMenu()
+        {
+            _serversHoverMenu.ShowImageMargin = false;
+            _serversHoverMenu.BackColor = Color.FromArgb(36, 38, 63);
+            _serversHoverMenu.ForeColor = Color.White;
+            _serversHoverMenu.RenderMode = ToolStripRenderMode.Professional;
+            _serversHoverMenu.Renderer = new ToolStripProfessionalRenderer(new TrayMenuColorTable());
+
+            ConfigureServersHoverMenuItem(_serversNewUserRegistrationMenuItem, serversNewUserRegistrationMenuItem_Click);
+            ConfigureServersHoverMenuItem(_serversNewServerRegistrationMenuItem, serversNewServerRegistrationMenuItem_Click);
+            ConfigureServersHoverMenuItem(_serversSynchronizeRegisteredServerMenuItem, serversSynchronizeRegisteredServerMenuItem_Click);
+
+            _serversHoverMenu.Items.Add(_serversNewUserRegistrationMenuItem);
+            _serversHoverMenu.Items.Add(_serversNewServerRegistrationMenuItem);
+            _serversHoverMenu.Items.Add(_serversSynchronizeRegisteredServerMenuItem);
+
+            _quickPanelSecurityNavButton.MouseEnter += quickPanelSecurityNavButton_MouseEnter;
+        }
+
+        private static void ConfigureServersHoverMenuItem(ToolStripMenuItem menuItem, EventHandler clickHandler)
+        {
+            menuItem.Font = new Font("Segoe UI Semibold", 8.5F, FontStyle.Bold);
+            menuItem.Padding = new Padding(8, 6, 8, 6);
+            menuItem.ForeColor = Color.White;
+            menuItem.Click += clickHandler;
+        }
+
+        private void quickPanelSecurityNavButton_MouseEnter(object? sender, EventArgs e)
+        {
+            if (!_showExpandedTrayMenu)
+            {
+                return;
+            }
+
+            UpdateServersHoverMenuState();
+
+            if (_serversHoverMenu.Visible)
+            {
+                return;
+            }
+
+            Point location = _quickPanelSecurityNavButton.PointToScreen(new Point(_quickPanelSecurityNavButton.Width + 4, 0));
+            _serversHoverMenu.Show(location);
+        }
+
+        private void UpdateServersHoverMenuState()
+        {
+            bool canRegisterUser = !_authenticationInProgress && !_authenticationService.IsAuthorizedForActiveNamespace;
+            bool canRegisterServer = _isDeviceRegistered && _authenticationService.IsAuthorized && !_authenticationInProgress;
+
+            _serversNewUserRegistrationMenuItem.Enabled = canRegisterUser;
+            _serversNewServerRegistrationMenuItem.Enabled = canRegisterServer;
+            _serversSynchronizeRegisteredServerMenuItem.Enabled = canRegisterServer;
+        }
+
+        private void serversNewUserRegistrationMenuItem_Click(object? sender, EventArgs e)
+        {
+            _serversHoverMenu.Close();
+            _trayMenuController?.SetActiveSection(TrayMenuSection.Users);
+            quickPanelRegisterUserInlineButton_Click(sender, e);
+        }
+
+        private void serversNewServerRegistrationMenuItem_Click(object? sender, EventArgs e)
+        {
+            _serversHoverMenu.Close();
+            _trayMenuController?.SetActiveSection(TrayMenuSection.Servers);
+            quickPanelRegisterNewServerInlineButton_Click(sender, e);
+        }
+
+        private void serversSynchronizeRegisteredServerMenuItem_Click(object? sender, EventArgs e)
+        {
+            _serversHoverMenu.Close();
+            _trayMenuController?.SetActiveSection(TrayMenuSection.Servers);
+            quickPanelServerRegistrationInlineButton_Click(sender, e);
         }
 
         private static void ConfigureQuickPanelButton(Button button, Color backColor, Color foreColor)
@@ -1448,6 +1543,123 @@ namespace TrayApp
             }
 
             UpdateServerRegistrationPresentation(viewState);
+            UpdateAccountsPresentation();
+        }
+
+        private void UpdateAccountsPresentation()
+        {
+            bool accountsActive = _trayMenuController?.ActiveSection == TrayMenuSection.Accounts;
+            _quickPanelAccountsPanel.Visible = accountsActive;
+
+            if (!accountsActive)
+            {
+                return;
+            }
+
+            _quickPanelSelectionCard.Visible = false;
+            _quickPanelMetricsCard.Visible = false;
+            _quickPanelInsightCard.Visible = false;
+            _quickPanelAccountsPanel.Controls.Clear();
+
+            if (!_registeredDeviceService.TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? registrations) || registrations == null)
+            {
+                return;
+            }
+
+            foreach (DesktopRegistration registration in registrations)
+            {
+                foreach (NamespaceItemDto namespaceItem in registration.Namespaces)
+                {
+                    _quickPanelAccountsPanel.Controls.Add(CreateAccountRow(registration.UserKey, namespaceItem));
+                }
+            }
+        }
+
+        private Control CreateAccountRow(string userId, NamespaceItemDto namespaceItem)
+        {
+            Panel row = new()
+            {
+                BackColor = Color.FromArgb(46, 48, 77),
+                Margin = new Padding(0, 0, 0, 8),
+                Size = new Size(550, 64)
+            };
+            Label urlLabel = new()
+            {
+                AutoEllipsis = true,
+                Font = new Font("Segoe UI Semibold", 8.5F, FontStyle.Bold),
+                ForeColor = Color.White,
+                Location = new Point(12, 10),
+                Size = new Size(455, 18),
+                Text = namespaceItem.Url
+            };
+            Label accountLabel = new()
+            {
+                AutoEllipsis = true,
+                Font = new Font("Segoe UI", 8F),
+                ForeColor = Color.FromArgb(171, 174, 211),
+                Location = new Point(12, 34),
+                Size = new Size(455, 18),
+                Text = namespaceItem.AccountId
+            };
+            Button deleteButton = new()
+            {
+                AccessibleName = "Delete account",
+                FlatStyle = FlatStyle.Flat,
+                ForeColor = Color.FromArgb(214, 88, 88),
+                Location = new Point(486, 14),
+                Size = new Size(42, 36),
+                UseVisualStyleBackColor = false
+            };
+            deleteButton.FlatAppearance.BorderSize = 0;
+            deleteButton.Paint += DrawDeleteAccountIcon;
+            deleteButton.Click += async (_, _) => await DeleteAccountFromQuickPanelAsync(userId, namespaceItem);
+            row.Controls.Add(urlLabel);
+            row.Controls.Add(accountLabel);
+            row.Controls.Add(deleteButton);
+            return row;
+        }
+
+        private static void DrawDeleteAccountIcon(object? sender, PaintEventArgs eventArgs)
+        {
+            if (sender is not Button button)
+            {
+                return;
+            }
+
+            using var pen = new Pen(button.ForeColor, 2F);
+            Rectangle bounds = button.ClientRectangle;
+            int centerX = bounds.Width / 2;
+            eventArgs.Graphics.DrawRectangle(pen, centerX - 6, 13, 12, 13);
+            eventArgs.Graphics.DrawLine(pen, centerX - 8, 10, centerX + 8, 10);
+            eventArgs.Graphics.DrawLine(pen, centerX - 2, 7, centerX + 2, 7);
+            eventArgs.Graphics.DrawLine(pen, centerX - 2, 16, centerX - 2, 23);
+            eventArgs.Graphics.DrawLine(pen, centerX + 2, 16, centerX + 2, 23);
+        }
+
+        private async Task DeleteAccountFromQuickPanelAsync(string userId, NamespaceItemDto namespaceItem)
+        {
+            DialogResult confirmation = MessageBox.Show(
+                "Deleting this account deregisters this device and permanently removes all credentials saved on this server. This cannot be undone.",
+                "Delete account?",
+                MessageBoxButtons.OKCancel,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (confirmation != DialogResult.OK)
+            {
+                return;
+            }
+
+            try
+            {
+                await _accountLifecycleService.DeleteAccountAsync(userId, namespaceItem);
+                RefreshQuickPanelSelections();
+                UpdateQuickPanelState();
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(exception.Message, "Account deletion failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void UpdateServerRegistrationPresentation(TrayMenuViewState viewState)

@@ -5,30 +5,12 @@ $groupNames = @(
     "Engineering",
     "Operations",
     "Human Resources",
-    "Sales",
-    "Marketing",
-    "Customer Success",
-    "Support",
-    "Security",
-    "Product",
-    "Design",
-    "Quality Assurance",
-    "Legal",
-    "Procurement",
-    "Leadership",
-    "Research",
-    "Training",
-    "IT Services",
-    "Partners",
-    "Administration"
+    "Sales"
 )
 
 $serviceTemplates = @(
     [ordered]@{ Label = "GitHub"; Domain = "github.com"; Description = "source control" },
-    [ordered]@{ Label = "Jira"; Domain = "jira.company.local"; Description = "issue tracking" },
-    [ordered]@{ Label = "Slack"; Domain = "company.slack.com"; Description = "team messaging" },
-    [ordered]@{ Label = "Confluence"; Domain = "confluence.company.local"; Description = "knowledge base" },
-    [ordered]@{ Label = "AWS Console"; Domain = "signin.aws.amazon.com"; Description = "cloud access" }
+    [ordered]@{ Label = "Jira"; Domain = "jira.company.local"; Description = "issue tracking" }
 )
 
 $firstNames = @(
@@ -91,7 +73,10 @@ function New-LongDescription {
     return $builder.ToString().Substring(0, [Math]::Max(8000, $builder.Length))
 }
 
-Write-Host "Creating 20 groups..."
+$groupCount = $groupNames.Count
+$entryCount = $groupCount * $serviceTemplates.Count
+
+Write-Host "Creating $groupCount groups..."
 
 for ($groupIndex = 0; $groupIndex -lt $groupNames.Count; $groupIndex++) {
     $groupName = $groupNames[$groupIndex]
@@ -110,10 +95,10 @@ for ($groupIndex = 0; $groupIndex -lt $groupNames.Count; $groupIndex++) {
         groupName = $groupResponse.groupName
     })
 
-    Write-Host ("[{0}/20] Group created: {1} ({2})" -f ($groupIndex + 1), $groupResponse.groupName, $groupResponse.groupId)
+    Write-Host ("[{0}/{1}] Group created: {2} ({3})" -f ($groupIndex + 1), $groupCount, $groupResponse.groupName, $groupResponse.groupId)
 }
 
-Write-Host "Creating 100 entries..."
+Write-Host "Creating $entryCount entries..."
 
 for ($groupIndex = 0; $groupIndex -lt $createdGroups.Count; $groupIndex++) {
     $group = $createdGroups[$groupIndex]
@@ -153,7 +138,7 @@ for ($groupIndex = 0; $groupIndex -lt $createdGroups.Count; $groupIndex++) {
             registry = $registry
         })
 
-        Write-Host ("[{0}/100] Entry created: {1}" -f $entryNumber, $entryResponse.label)
+        Write-Host ("[{0}/{1}] Entry created: {2}" -f $entryNumber, $entryCount, $entryResponse.label)
     }
 }
 

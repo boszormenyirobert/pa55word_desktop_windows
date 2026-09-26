@@ -40,28 +40,26 @@ namespace TrayApp.Services
             string activeNamespaceId = AppEnvironment.GetActiveNamespaceId() ?? string.Empty;
             NamespaceItemDto? activeNamespace = registration.Namespaces.FirstOrDefault(namespaceItem =>
                 string.Equals(namespaceItem.NamespaceId, activeNamespaceId, StringComparison.Ordinal));
-
-            string desktopDeviceIdForDek = string.IsNullOrWhiteSpace(activeNamespace?.DesktopDeviceId)
-                ? registration.DesktopDeviceId
-                : activeNamespace.DesktopDeviceId;
-            if (activeNamespace != null &&
-                !string.IsNullOrWhiteSpace(activeNamespace.DesktopDeviceId) &&
-                !string.Equals(activeNamespace.DesktopDeviceId, registration.DesktopDeviceId, StringComparison.Ordinal) &&
-                string.IsNullOrWhiteSpace(activeNamespace.EncDek))
+            if (activeNamespace == null)
             {
-                throw new InvalidOperationException(
-                    $"Namespace '{activeNamespace.NamespaceId}' does not contain encrypted DEK for desktop device '{activeNamespace.DesktopDeviceId}'. Re-sync or re-register this namespace.");
+                throw new InvalidOperationException("Active namespace is missing from config.json.");
             }
 
-            string encDekForNamespace = string.IsNullOrWhiteSpace(activeNamespace?.EncDek)
-                ? registration.EncDek
-                : activeNamespace.EncDek;
+            if (string.IsNullOrWhiteSpace(activeNamespace.DesktopDeviceId))
+            {
+                throw new InvalidOperationException($"Namespace '{activeNamespace.NamespaceId}' does not contain desktopDeviceId.");
+            }
 
-            string keyContainer = "KeyContainer_" + desktopDeviceIdForDek;
+            if (string.IsNullOrWhiteSpace(activeNamespace.EncDek))
+            {
+                throw new InvalidOperationException($"Namespace '{activeNamespace.NamespaceId}' does not contain encrypted DEK.");
+            }
+
+            string keyContainer = "KeyContainer_" + activeNamespace.DesktopDeviceId;
 
             byte[] decrypted = new Pki().DecryptWithPrivateKeyOaepSha256(
                 keyContainer,
-                encDekForNamespace);
+                activeNamespace.EncDek);
 
             return (registration, decrypted);
         }

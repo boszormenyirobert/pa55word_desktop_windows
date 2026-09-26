@@ -760,9 +760,9 @@ namespace TrayApp.Services
             DesktopRegistration registration = _registeredDeviceService.ReadRegistration();
             string userId = registration.UserKey;
             string namespaceId = registration.Namespaces.FirstOrDefault()?.NamespaceId ?? string.Empty;
-            string accountId = AppEnvironment.GetPrimaryNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetPrimaryNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
-            string baseUrl = AppEnvironment.GetPrimaryNamespaceUrlOrDefault(AppEnvironment.BackendBaseUrl);
+            string accountId = AppEnvironment.GetPrimaryNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetPrimaryNamespaceDesktopDeviceId();
+            string baseUrl = AppEnvironment.GetPrimaryNamespaceUrl();
 
             return new AuthorizationContext(userId, namespaceId, accountId, desktopDeviceId, baseUrl);
         }
@@ -804,9 +804,9 @@ namespace TrayApp.Services
             DesktopRegistration registration = _registeredDeviceService.ReadRegistration();
             string userId = registration.UserKey;
             string namespaceId = AppEnvironment.GetActiveNamespaceId() ?? string.Empty;
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
-            string baseUrl = AppEnvironment.GetActiveNamespaceUrlOrDefault(AppEnvironment.BackendBaseUrl);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
+            string baseUrl = AppEnvironment.GetActiveNamespaceUrl();
 
             return new AuthorizationContext(userId, namespaceId, accountId, desktopDeviceId, baseUrl);
         }

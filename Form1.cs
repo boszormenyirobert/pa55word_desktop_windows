@@ -27,6 +27,7 @@ namespace TrayApp
         private readonly BootstrapRegistrationService _bootstrapRegistrationService = new BootstrapRegistrationService();
         private readonly RegisteredDeviceService _registeredDeviceService = new RegisteredDeviceService();
         private readonly HttpApiClient _httpApiClient = new HttpApiClient();
+        private readonly AccountLifecycleService _accountLifecycleService;
         private readonly AuthorizationSessionStore _authorizationSessionStore = new AuthorizationSessionStore();
         private readonly ExtensionSessionStateStore _extensionSessionStateStore = new ExtensionSessionStateStore();
         private readonly AuthenticationService _authenticationService;
@@ -57,6 +58,8 @@ namespace TrayApp
                 _authorizationSessionStore,
                 HandleAuthorizationNotificationChanged,
                 message => Debug.WriteLine(message));
+
+            _accountLifecycleService = new AccountLifecycleService(_httpApiClient);
 
             _authStateMonitorService = new AuthStateMonitorService(
                 _authenticationService,
@@ -139,7 +142,14 @@ namespace TrayApp
 
                 if (deviceIsRegistered)
                 {
-                    EnterRegisteredMode();
+                    await _accountLifecycleService.RemoveDeletedAccountsAsync();
+                    deviceIsRegistered = _registeredDeviceService.TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? registrations) &&
+                        registrations is { Count: > 0 };
+
+                    if (deviceIsRegistered)
+                    {
+                        EnterRegisteredMode();
+                    }
                 }
             }
             catch (Exception ex)

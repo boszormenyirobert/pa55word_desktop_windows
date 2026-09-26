@@ -5,7 +5,8 @@ namespace TrayApp.Services
         public const string VersionPrefix = "/api/v1";
         public const string Authentication = "authentication";
         public const string AuthenticationStatus = "authentication/status";
-        public const string Namespace = "namespace";
+        public const string Account = "account";
+        public const string AccountStatus = "account/status";
         public const string CredentialStore = "credential-store";
         public const string CredentialStoreAll = "credential-store/all";
         public const string CredentialStoreGroup = "credential-store/group";
@@ -44,11 +45,6 @@ namespace TrayApp.Services
         public static string AuthenticationRevoke(string accountId, string desktopDeviceId, string nonce)
         {
             return $"{Authentication}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(desktopDeviceId)}?nonce={Uri.EscapeDataString(nonce)}";
-        }
-
-        public static string NamespacesForDevice(string accountId, string desktopDeviceId)
-        {
-            return $"{Namespace}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(desktopDeviceId)}";
         }
 
         public static string ResolveNamespace(string desktopDeviceId)

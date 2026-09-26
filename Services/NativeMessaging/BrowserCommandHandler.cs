@@ -144,8 +144,8 @@ namespace TrayApp.Services
         private async Task<string> HandleCreateAsync(BrowserExtensionPayloadDto payload)
         {
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             if (dek.Length != 32)
             {
@@ -192,8 +192,8 @@ namespace TrayApp.Services
             }
 
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             if (dek.Length != 32)
             {
@@ -241,8 +241,8 @@ namespace TrayApp.Services
             }
 
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             var deletePayload = new
             {
@@ -377,8 +377,8 @@ namespace TrayApp.Services
         private CredentialReadContext GetCredentialReadContext()
         {
             DesktopRegistration registration = _registeredDeviceService.ReadRegistration();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
             string namespaceId = AppEnvironment.GetActiveNamespaceId() ?? string.Empty;
             string contextKey = $"{registration.UserKey}|{namespaceId}|{accountId}|{desktopDeviceId}";
 
@@ -413,8 +413,8 @@ namespace TrayApp.Services
         private async Task<string> HandleGroupReadAsync()
         {
             var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             var payload = new ConnectionReadRequestDto
             {
@@ -445,8 +445,8 @@ namespace TrayApp.Services
             }
 
             var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             var request = new CredentialGroupCreateRequestDto
             {
@@ -482,8 +482,8 @@ namespace TrayApp.Services
             }
 
             var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             var request = new CredentialGroupUpdateRequestDto
             {
@@ -514,8 +514,8 @@ namespace TrayApp.Services
             }
 
             var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             var request = new CredentialGroupDeleteRequestDto
             {

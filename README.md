@@ -5,7 +5,13 @@ dotnet clean
 dotnet build
 powershell -ExecutionPolicy Bypass -File .\NativeMessaging\Install-NativeHost.ps1 -SourceDir "C:\Users\boszo\source\repos\TrayApp\bin\Debug\net8.0-windows" -Browser Edge
 
-
+Install on any PC
+=> copy the build files + .\NativeMessaging\Install-NativeHost.ps1
+=> run from the directory in ps:
+powershell -ExecutionPolicy Bypass -File "C:\Users\boesz\AppData\Local\ZeroIntrusion\TrayApp\Install-NativeHost.ps1" `
+  -SourceDir "C:\Users\boesz\AppData\Local\ZeroIntrusion\TrayApp" `
+  -InstallRoot "C:\Users\boesz\AppData\Local\ZeroIntrusion\TrayApp-Installed" `
+  -Browser Edge
 
 powershell -ExecutionPolicy Bypass -File .\NativeMessaging\Install-NativeHost.ps1 -SourceDir "C:\Users\boszo\source\repos\TrayApp\bin\Release\net8.0-windows" -Browser Edge
 

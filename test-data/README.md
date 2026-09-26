@@ -10,7 +10,8 @@ Prerequisites:
 
 Files:
 
-- `01-Seed-TestData.ps1`: creates 20 groups and 100 credential entries, with every entry assigned to one of the created groups and with a generated description of at least 8000 characters.
+- `01-Seed-TestData.ps1`: creates the Finance, Engineering, Operations, Human Resources, and Sales groups, with GitHub and Jira credentials in each group. It creates 10 credential entries total, each with a generated description of at least 8000 characters.
+- `01-Seed-TestData-Secondary.ps1`: creates the Legal, Product, Support, Security, and Marketing groups, with Microsoft 365 and AWS Console credentials in each group. It creates 10 credential entries total.
 - `02-Read-Entries.ps1`: reads all entries from TrayApp and lets you filter by `EntryId`, `LabelContains`, or `GroupId` by editing the variables at the top of the file.
 - `03-Update-Entry.ps1`: updates one entry after you set the required variables at the top of the file.
 - `04-Delete-Entry.ps1`: deletes one entry after you set `EntryId`.
@@ -26,6 +27,7 @@ State file:
 Usage examples:
 
 - `powershell -ExecutionPolicy Bypass -File .\test-data\01-Seed-TestData.ps1`
+- `powershell -ExecutionPolicy Bypass -File .\test-data\01-Seed-TestData-Secondary.ps1`
 - `powershell -ExecutionPolicy Bypass -File .\test-data\02-Read-Entries.ps1`
 - Edit variables at the top of `03-Update-Entry.ps1`, then run it.
 - Edit variables at the top of `05-Rename-Group.ps1`, then run it.

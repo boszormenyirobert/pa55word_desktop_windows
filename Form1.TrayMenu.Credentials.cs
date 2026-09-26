@@ -10,6 +10,8 @@ namespace TrayApp
 {
     public partial class Form1
     {
+        private const string UngroupedCredentialGroupId = "__ungrouped__";
+
         private async Task EnsureCredentialCollectionLoadedAsync(bool forceRefresh = false)
         {
             if (!_isDeviceRegistered || _credentialsLoading)
@@ -48,6 +50,7 @@ namespace TrayApp
                 _credentialCollectionLoaded = true;
 
                 if (!string.IsNullOrWhiteSpace(_selectedCredentialGroupId) &&
+                    !string.Equals(_selectedCredentialGroupId, UngroupedCredentialGroupId, StringComparison.Ordinal) &&
                     !_credentialGroups.Any(group => string.Equals(group.GroupId, _selectedCredentialGroupId, StringComparison.Ordinal)))
                 {
                     _selectedCredentialGroupId = string.Empty;
@@ -94,6 +97,13 @@ namespace TrayApp
                 return _credentialEntries;
             }
 
+            if (string.Equals(_selectedCredentialGroupId, UngroupedCredentialGroupId, StringComparison.Ordinal))
+            {
+                return _credentialEntries
+                    .Where(entry => string.IsNullOrWhiteSpace(entry.GroupId))
+                    .ToArray();
+            }
+
             return _credentialEntries
                 .Where(entry => string.Equals(entry.GroupId, _selectedCredentialGroupId, StringComparison.Ordinal))
                 .ToArray();
@@ -104,6 +114,11 @@ namespace TrayApp
             if (string.IsNullOrWhiteSpace(_selectedCredentialGroupId))
             {
                 return string.Empty;
+            }
+
+            if (string.Equals(_selectedCredentialGroupId, UngroupedCredentialGroupId, StringComparison.Ordinal))
+            {
+                return "Ungrouped";
             }
 
             return _credentialGroups
@@ -126,7 +141,8 @@ namespace TrayApp
                 _quickPanelUserComboBox.Items.Clear();
                 _quickPanelNamespaceComboBox.Items.Clear();
 
-                _quickPanelUserComboBox.Items.Add(new SelectionOption("Select group", string.Empty));
+                _quickPanelUserComboBox.Items.Add(new SelectionOption("All groups", string.Empty));
+                _quickPanelUserComboBox.Items.Add(new SelectionOption("Ungrouped", UngroupedCredentialGroupId));
 
                 foreach (CredentialGroupDto group in _credentialGroups)
                 {

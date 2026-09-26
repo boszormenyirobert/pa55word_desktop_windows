@@ -31,8 +31,8 @@ namespace TrayApp.Services
         public async Task<IReadOnlyList<CredentialGroupDto>> ReadGroupsAsync()
         {
             DesktopRegistration registration = _registeredDeviceService.ReadRegistration();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             var payload = new ConnectionReadRequestDto
             {
@@ -60,8 +60,8 @@ namespace TrayApp.Services
         public async Task<IReadOnlyList<CredentialEntryListItem>> ReadEntriesAsync()
         {
             DesktopRegistration registration = _registeredDeviceService.ReadRegistration();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             var payload = new ConnectionReadRequestDto
             {
@@ -112,8 +112,8 @@ namespace TrayApp.Services
             await EnsureAuthorizedForCredentialAccessAsync().ConfigureAwait(false);
 
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             string registryJson = JsonSerializer.Serialize(draft.Registry);
             var encryptedRegistry = EncryptRegistryWithAesGcm(dek, registryJson);
@@ -158,8 +158,8 @@ namespace TrayApp.Services
             await EnsureAuthorizedForCredentialAccessAsync().ConfigureAwait(false);
 
             var (registration, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             string registryJson = JsonSerializer.Serialize(draft.Registry);
             var encryptedRegistry = EncryptRegistryWithAesGcm(dek, registryJson);
@@ -200,8 +200,8 @@ namespace TrayApp.Services
             await EnsureAuthorizedForCredentialAccessAsync().ConfigureAwait(false);
 
             var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             var request = new CredentialGroupCreateRequestDto
             {
@@ -225,8 +225,8 @@ namespace TrayApp.Services
             await EnsureAuthorizedForCredentialAccessAsync().ConfigureAwait(false);
 
             var (registration, _) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
-            string accountId = AppEnvironment.GetActiveNamespaceAccountIdOrDefault(registration.AccountId);
-            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceIdOrDefault(registration.DesktopDeviceId);
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
             var request = new CredentialGroupUpdateRequestDto
             {
