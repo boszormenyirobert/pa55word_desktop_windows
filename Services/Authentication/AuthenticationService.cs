@@ -34,6 +34,17 @@ namespace TrayApp.Services
 
         public bool IsAuthorized => _authorizationSessionStore.IsAuthorized;
 
+        public bool HasAuthorizedOtherProfile => _authorizationSessionStore.HasActiveSessionForAnotherUser(
+            AppEnvironment.GetActiveUserId());
+
+        public bool HasAnyRegisteredProfileWithActiveSession => _registeredDeviceService
+            .ReadRegistrations()
+            .Any(registration => _authorizationSessionStore.GetStates(registration.UserKey).Count > 0);
+
+        public bool IsLoginNavigationDisabled => HasAuthorizedOtherProfile;
+
+        public bool CanLoginForActiveNamespace => !IsAuthorizedForActiveNamespace && !HasAuthorizedOtherProfile;
+
         public bool IsAuthorizedForActiveNamespace
         {
             get
@@ -364,6 +375,13 @@ namespace TrayApp.Services
                 return true;
             }
 
+            if (IsAuthorizationRejected(response))
+            {
+                _log?.Invoke($"[AUTH] Authorization rejected. Response: {DescribeResponse(response)}");
+                NotifyAuthorizationStatus(BuildAuthorizationFailureMessage(response), ToolTipIcon.Error);
+                return false;
+            }
+
             if (!string.Equals(response.Status, "pending", StringComparison.OrdinalIgnoreCase))
             {
                 _log?.Invoke($"[AUTH] Authorization rejected with non-pending status. Response: {DescribeResponse(response)}");
@@ -396,8 +414,7 @@ namespace TrayApp.Services
             AuthorizationContext context,
             TimeSpan timeout)
         {
-            using var timeoutCancellation = new CancellationTokenSource(timeout);
-            using var streamCancellation = CancellationTokenSource.CreateLinkedTokenSource(timeoutCancellation.Token);
+            using var streamCancellation = new CancellationTokenSource();
             var authorizationResult = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             var statusPayload = new
@@ -429,23 +446,37 @@ namespace TrayApp.Services
                 ApiRoutes.AuthenticationStatusNotification(context.AccountId, context.DesktopDeviceId, notificationId, statusPayload.nonce, context.NamespaceId));
             _log?.Invoke($"[AUTH] Listening for status updates. Endpoint='{statusEndpoint}'.");
 
+            Task streamTask = _httpApiClient.ConnectToSseEndpoint(
+                statusEndpoint,
+                headers,
+                data => HandleAuthenticationStatusMessage(data, authorizationResult, streamCancellation),
+                streamCancellation.Token);
+            Task timeoutTask = Task.Delay(timeout);
+
             try
             {
-                await _httpApiClient.ConnectToSseEndpoint(
-                    statusEndpoint,
-                    headers,
-                    data => HandleAuthenticationStatusMessage(data, authorizationResult, streamCancellation),
-                    streamCancellation.Token).ConfigureAwait(false);
+                Task completedTask = await Task.WhenAny(authorizationResult.Task, streamTask, timeoutTask)
+                    .ConfigureAwait(false);
+
+                if (completedTask == authorizationResult.Task)
+                {
+                    streamCancellation.Cancel();
+                    return await authorizationResult.Task.ConfigureAwait(false);
+                }
+
+                if (completedTask == timeoutTask)
+                {
+                    streamCancellation.Cancel();
+                    _log?.Invoke("[AUTH] Status stream timed out.");
+                    NotifyAuthorizationStatus("Login timed out while waiting for mobile approval.", ToolTipIcon.Warning);
+                    return false;
+                }
+
+                await streamTask.ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (authorizationResult.Task.IsCompleted)
             {
                 _log?.Invoke("[AUTH] Status stream completed after result was determined.");
-            }
-            catch (OperationCanceledException) when (timeoutCancellation.IsCancellationRequested)
-            {
-                _log?.Invoke("[AUTH] Status stream timed out.");
-                NotifyAuthorizationStatus("Login timed out while waiting for mobile approval.", ToolTipIcon.Warning);
-                return false;
             }
 
             return authorizationResult.Task.IsCompleted && await authorizationResult.Task.ConfigureAwait(false);
@@ -488,6 +519,15 @@ namespace TrayApp.Services
             {
                 _log?.Invoke("[AUTH] SSE status accepted authorization.");
                 authorizationResult.TrySetResult(true);
+                streamCancellation.Cancel();
+                return;
+            }
+
+            if (IsAuthorizationRejected(statusResponse))
+            {
+                _log?.Invoke($"[AUTH] SSE status rejected authorization. Response: {DescribeResponse(statusResponse)}");
+                NotifyAuthorizationStatus(BuildAuthorizationFailureMessage(statusResponse), ToolTipIcon.Error);
+                authorizationResult.TrySetResult(false);
                 streamCancellation.Cancel();
                 return;
             }
@@ -559,7 +599,7 @@ namespace TrayApp.Services
 
             if (await TryEnsureAuthorizationContextAsync(
                     activeNamespaceContext,
-                    allowInteractiveLogin,
+                    allowInteractiveLogin: false,
                     notifyOnExpiredSession: true,
                     logReuseMessage: "[AUTH] Reusing active attestation for the selected namespace.",
                     logFoundMessage: "[AUTH] Found an active attestation for the selected namespace.")
@@ -568,10 +608,35 @@ namespace TrayApp.Services
                 return true;
             }
 
+            if (!allowInteractiveLogin)
+            {
+                return false;
+            }
+
             await _authenticationLock.WaitAsync().ConfigureAwait(false);
             try
             {
                 activeNamespaceContext = CreateActiveNamespaceAuthorizationContext();
+
+                if (await TryEnsureAuthorizationContextAsync(
+                        activeNamespaceContext,
+                        allowInteractiveLogin: false,
+                        notifyOnExpiredSession: false,
+                        logReuseMessage: "[AUTH] Reusing selected namespace attestation after lock.",
+                        logFoundMessage: "[AUTH] Found an active attestation for the selected namespace after lock.")
+                    .ConfigureAwait(false))
+                {
+                    return true;
+                }
+
+                string? authorizedProfileName = await FindOtherAuthorizedProfileAsync().ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(authorizedProfileName))
+                {
+                    NotifyAuthorizationStatus(
+                        $"Login blocked: {authorizedProfileName} already has an active desktop session. Log out before switching profiles.",
+                        ToolTipIcon.Warning);
+                    return false;
+                }
 
                 return await TryEnsureAuthorizationContextAsync(
                         activeNamespaceContext,
@@ -585,6 +650,53 @@ namespace TrayApp.Services
             {
                 _authenticationLock.Release();
             }
+        }
+
+        private async Task<string?> FindOtherAuthorizedProfileAsync()
+        {
+            string? activeUserId = AppEnvironment.GetActiveUserId();
+            if (string.IsNullOrWhiteSpace(activeUserId))
+            {
+                return null;
+            }
+
+            foreach (DesktopRegistration registration in _registeredDeviceService.ReadRegistrations())
+            {
+                if (string.Equals(registration.UserKey, activeUserId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                foreach (NamespaceItemDto namespaceItem in registration.Namespaces)
+                {
+                    if (string.IsNullOrWhiteSpace(namespaceItem.Url))
+                    {
+                        continue;
+                    }
+
+                    AuthorizationContext context = CreateAuthorizationContext(registration, namespaceItem, string.Empty);
+                    if (!context.IsValid)
+                    {
+                        continue;
+                    }
+                    AuthorizationHealthResult health = await CheckAuthorizationContextHealthAsync(
+                        context,
+                        persistSession: true,
+                        inactiveReason: "authorization_revoked").ConfigureAwait(false);
+
+                    if (health.Authorized)
+                    {
+                        return registration.DisplayUserName;
+                    }
+
+                    if (health.ExplicitlyInvalid)
+                    {
+                        RevokeAuthorization(context);
+                    }
+                }
+            }
+
+            return null;
         }
 
         private async Task<AuthorizationHealthResult> CheckAuthorizationContextHealthAsync(
@@ -777,17 +889,7 @@ namespace TrayApp.Services
 
             foreach (NamespaceItemDto namespaceItem in registration.Namespaces)
             {
-                string accountId = string.IsNullOrWhiteSpace(namespaceItem.AccountId)
-                    ? registration.AccountId
-                    : namespaceItem.AccountId;
-                string desktopDeviceId = string.IsNullOrWhiteSpace(namespaceItem.DesktopDeviceId)
-                    ? registration.DesktopDeviceId
-                    : namespaceItem.DesktopDeviceId;
-                string baseUrl = string.IsNullOrWhiteSpace(namespaceItem.Url)
-                    ? AppEnvironment.BackendBaseUrl
-                    : namespaceItem.Url.TrimEnd('/');
-
-                contexts.Add(new AuthorizationContext(registration.UserKey, namespaceItem.NamespaceId, accountId, desktopDeviceId, baseUrl));
+                contexts.Add(CreateAuthorizationContext(registration, namespaceItem, AppEnvironment.BackendBaseUrl));
             }
 
             return contexts
@@ -797,6 +899,29 @@ namespace TrayApp.Services
                     StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .ToArray();
+        }
+
+        private static AuthorizationContext CreateAuthorizationContext(
+            DesktopRegistration registration,
+            NamespaceItemDto namespaceItem,
+            string fallbackBaseUrl)
+        {
+            string accountId = string.IsNullOrWhiteSpace(namespaceItem.AccountId)
+                ? registration.AccountId
+                : namespaceItem.AccountId;
+            string desktopDeviceId = string.IsNullOrWhiteSpace(namespaceItem.DesktopDeviceId)
+                ? registration.DesktopDeviceId
+                : namespaceItem.DesktopDeviceId;
+            string baseUrl = string.IsNullOrWhiteSpace(namespaceItem.Url)
+                ? fallbackBaseUrl
+                : namespaceItem.Url.TrimEnd('/');
+
+            return new AuthorizationContext(
+                registration.UserKey,
+                namespaceItem.NamespaceId,
+                accountId,
+                desktopDeviceId,
+                baseUrl);
         }
 
         private AuthorizationContext CreateActiveNamespaceAuthorizationContext()
@@ -831,6 +956,16 @@ namespace TrayApp.Services
                    response.Accepted == true ||
                    response.Authenticated == true ||
                    string.Equals(response.Status, "authorized", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsAuthorizationRejected(AuthenticationResponseDto response)
+        {
+            return response.Declined == true ||
+                   string.Equals(response.Status, "declined", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(response.Status, "denied", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(response.Status, "rejected", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(response.Status, "cancelled", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(response.Status, "expired", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string DescribeResponse(AuthenticationResponseDto? response)
@@ -943,6 +1078,11 @@ namespace TrayApp.Services
             return "Login failed. Mobile approval did not complete.";
         }
 
-        private sealed record AuthorizationContext(string UserId, string NamespaceId, string AccountId, string DesktopDeviceId, string BaseUrl);
+        private sealed record AuthorizationContext(string UserId, string NamespaceId, string AccountId, string DesktopDeviceId, string BaseUrl)
+        {
+            public bool IsValid => !string.IsNullOrWhiteSpace(AccountId) &&
+                !string.IsNullOrWhiteSpace(DesktopDeviceId) &&
+                !string.IsNullOrWhiteSpace(BaseUrl);
+        }
     }
 }

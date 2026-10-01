@@ -5,8 +5,10 @@ namespace TrayApp.TrayMenu
         Login,
         SettingsUsers,
         SettingsServers,
+        Devices,
         Accounts,
         Servers,
-        Credentials
+        Credentials,
+        Faq
     }
 }

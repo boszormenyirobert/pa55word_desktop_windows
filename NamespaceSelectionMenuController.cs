@@ -8,14 +8,20 @@ namespace TrayApp
     internal sealed class NamespaceSelectionMenuController
     {
         private readonly RegisteredDeviceService _registeredDeviceService;
+        private readonly AuthorizationSessionStore _authorizationSessionStore;
         private readonly ToolStripMenuItem _namespaceSelectionMenuItem;
+        private readonly Action _namespaceSelectionChanged;
 
         public NamespaceSelectionMenuController(
             RegisteredDeviceService registeredDeviceService,
-            ToolStripMenuItem namespaceSelectionMenuItem)
+            AuthorizationSessionStore authorizationSessionStore,
+            ToolStripMenuItem namespaceSelectionMenuItem,
+            Action namespaceSelectionChanged)
         {
             _registeredDeviceService = registeredDeviceService;
+            _authorizationSessionStore = authorizationSessionStore;
             _namespaceSelectionMenuItem = namespaceSelectionMenuItem;
+            _namespaceSelectionChanged = namespaceSelectionChanged;
         }
 
         public void RefreshMenu()
@@ -28,19 +34,24 @@ namespace TrayApp
 
             try
             {
-                bool hasMultipleNamespaces = registration.Namespaces.Count > 1;
+                List<NamespaceItemDto> activeNamespaces = registration.Namespaces
+                    .Where(namespaceItem => _authorizationSessionStore.HasActiveSessionForNamespace(
+                        registration.UserKey,
+                        namespaceItem.NamespaceId))
+                    .ToList();
+                bool hasMultipleActiveNamespaces = activeNamespaces.Count > 1;
 
-                _namespaceSelectionMenuItem.Visible = hasMultipleNamespaces;
+                _namespaceSelectionMenuItem.Visible = hasMultipleActiveNamespaces;
                 _namespaceSelectionMenuItem.DropDownItems.Clear();
 
-                if (!hasMultipleNamespaces)
+                if (!hasMultipleActiveNamespaces)
                 {
                     return;
                 }
 
                 string? activeNamespaceId = AppEnvironment.GetActiveNamespaceId();
 
-                foreach (NamespaceItemDto namespaceItem in registration.Namespaces)
+                foreach (NamespaceItemDto namespaceItem in activeNamespaces)
                 {
                     var menuItem = new ToolStripMenuItem(namespaceItem.Namespace)
                     {
@@ -53,9 +64,11 @@ namespace TrayApp
                     _namespaceSelectionMenuItem.DropDownItems.Add(menuItem);
                 }
 
-                if (string.IsNullOrWhiteSpace(activeNamespaceId) && registration.Namespaces.Count > 0)
+                if (!activeNamespaces.Any(namespaceItem =>
+                        string.Equals(namespaceItem.NamespaceId, activeNamespaceId, StringComparison.Ordinal)))
                 {
-                    AppEnvironment.SetActiveNamespace(registration.Namespaces[0].NamespaceId);
+                    AppEnvironment.SetActiveNamespace(activeNamespaces[0].NamespaceId);
+                    _namespaceSelectionChanged();
                     RefreshMenu();
                 }
             }
@@ -74,6 +87,7 @@ namespace TrayApp
             }
 
             AppEnvironment.SetActiveNamespace(namespaceId);
+            _namespaceSelectionChanged();
             RefreshMenu();
         }
 

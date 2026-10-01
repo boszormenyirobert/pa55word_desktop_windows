@@ -15,11 +15,11 @@ namespace TrayApp.Services
     {
         private readonly HttpClient _httpClient;
 
-        public HttpApiClient()
+        public HttpApiClient(TimeSpan? timeout = null)
         {
             _httpClient = new HttpClient
             {
-                Timeout = TimeSpan.FromMinutes(3)
+                Timeout = timeout ?? TimeSpan.FromMinutes(3)
             };
         }
 
@@ -203,6 +203,30 @@ namespace TrayApp.Services
                 {
                     PropertyNameCaseInsensitive = true
                 });
+        }
+
+        public async Task GetAsync(
+            string endpoint,
+            IReadOnlyDictionary<string, string>? headers = null)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            AddHeaders(request, headers);
+
+            LogRequest(request, payloadJson: null, "[HTTP-GET]");
+
+            using HttpResponseMessage response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+            string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+            LogResponse(response, endpoint, responseBody, "[HTTP-GET]");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new ApiRequestException(
+                    HttpMethod.Get,
+                    endpoint,
+                    response.StatusCode,
+                    responseBody);
+            }
         }
 
         private async Task<string> SendJsonAsync(

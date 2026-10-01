@@ -70,6 +70,7 @@ namespace TrayApp.Services
             string pendingUserId = Guid.NewGuid().ToString("D");
             string normalizedBaseUrl = NormalizeBaseUrl(baseUrl);
             EnsureUrlIsNotAlreadyRegistered(normalizedBaseUrl, pendingUserId);
+            await EnsureServerIsHealthyAsync(normalizedBaseUrl).ConfigureAwait(false);
 
             ConfigModel bootstrapConfig = new()
             {
@@ -105,6 +106,7 @@ namespace TrayApp.Services
             string keyContainer = "KeyContainer_" + desktopDeviceId;
             string normalizedNamespaceUrl = NormalizeBaseUrl(namespaceUrl);
             EnsureUrlIsNotAlreadyRegistered(normalizedNamespaceUrl, activeRegistration.UserKey);
+            await EnsureServerIsHealthyAsync(normalizedNamespaceUrl).ConfigureAwait(false);
             string namespaceId = CreateNamespaceId(namespaceName, normalizedNamespaceUrl);
 
             LogNamespaceRegistration(
@@ -119,16 +121,8 @@ namespace TrayApp.Services
                 activeRegistration.UserKey,
                 desktopDeviceId,
                 namespaceId,
-                normalizedNamespaceUrl);
-
-            _configStore.UpsertNamespace(activeRegistration.UserKey, new NamespaceItemDto
-            {
-                DesktopDeviceId = desktopDeviceId,
-                DeviceName = Environment.MachineName,
-                NamespaceId = namespaceId,
-                Namespace = namespaceName ?? normalizedNamespaceUrl,
-                Url = normalizedNamespaceUrl
-            });
+                normalizedNamespaceUrl,
+                namespaceName ?? normalizedNamespaceUrl);
 
             object payloadData = namespaceName == null
                 ? new
@@ -334,6 +328,14 @@ namespace TrayApp.Services
                 ResolveNamespaceResponseDto resolvedNamespace = await ResolveNamespaceAsync(pendingRegistration).ConfigureAwait(false);
                 LogRegistration(
                     $"Namespace resolve succeeded. requestedNamespaceId='{pendingRegistration.NamespaceId}', resolvedNamespaceId='{resolvedNamespace.NamespaceId}', accountId='{resolvedNamespace.AccountId}'.");
+                _configStore.UpsertNamespace(pendingRegistration.UserId, new NamespaceItemDto
+                {
+                    DesktopDeviceId = pendingRegistration.DeviceId,
+                    DeviceName = Environment.MachineName,
+                    NamespaceId = pendingRegistration.NamespaceId,
+                    Namespace = pendingRegistration.NamespaceName,
+                    Url = pendingRegistration.NamespaceUrl
+                });
                 _configStore.UpdateNamespaceRegistration(
                     pendingRegistration.UserId,
                     pendingRegistration.NamespaceId,
@@ -436,6 +438,23 @@ namespace TrayApp.Services
             return userName.Trim();
         }
 
+        private static async Task EnsureServerIsHealthyAsync(string normalizedBaseUrl)
+        {
+            string endpoint = $"{normalizedBaseUrl}{ApiRoutes.VersionPrefix}/{ApiRoutes.Healthy}";
+
+            try
+            {
+                var httpApiClient = new HttpApiClient(TimeSpan.FromSeconds(10));
+                await httpApiClient.GetAsync(endpoint).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidOperationException(
+                    $"The server at '{normalizedBaseUrl}' is unavailable or unhealthy.",
+                    exception);
+            }
+        }
+
         private void EnsureUrlIsNotAlreadyRegistered(string normalizedUrl, string? userKey)
         {
             if (_configStore.ContainsConfiguredUrl(normalizedUrl, userKey))
@@ -504,7 +523,8 @@ namespace TrayApp.Services
             string UserId,
             string DeviceId,
             string NamespaceId,
-            string NamespaceUrl);
+            string NamespaceUrl,
+            string NamespaceName);
 
         private sealed record PendingRootRegistrationContext(
             string UserId,

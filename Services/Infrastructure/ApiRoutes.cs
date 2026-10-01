@@ -5,8 +5,10 @@ namespace TrayApp.Services
         public const string VersionPrefix = "/api/v1";
         public const string Authentication = "authentication";
         public const string AuthenticationStatus = "authentication/status";
+        public const string Healthy = "healthy";
         public const string Account = "account";
         public const string AccountStatus = "account/status";
+        public const string AccountDevices = "account/devices";
         public const string CredentialStore = "credential-store";
         public const string CredentialStoreAll = "credential-store/all";
         public const string CredentialStoreGroup = "credential-store/group";

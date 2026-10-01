@@ -28,6 +28,7 @@ namespace TrayApp
         private readonly RegisteredDeviceService _registeredDeviceService = new RegisteredDeviceService();
         private readonly HttpApiClient _httpApiClient = new HttpApiClient();
         private readonly AccountLifecycleService _accountLifecycleService;
+        private readonly AccountDeviceService _accountDeviceService;
         private readonly AuthorizationSessionStore _authorizationSessionStore = new AuthorizationSessionStore();
         private readonly ExtensionSessionStateStore _extensionSessionStateStore = new ExtensionSessionStateStore();
         private readonly AuthenticationService _authenticationService;
@@ -39,6 +40,7 @@ namespace TrayApp
         private bool _authenticationInProgress;
         private Task? _activateInstanceTask;
         private bool _registrationHostedInTray;
+        private bool _allowInitialFormDisplay;
 
         public Form1()
         {
@@ -60,6 +62,7 @@ namespace TrayApp
                 message => Debug.WriteLine(message));
 
             _accountLifecycleService = new AccountLifecycleService(_httpApiClient);
+            _accountDeviceService = new AccountDeviceService(_httpApiClient, _authenticationService);
 
             _authStateMonitorService = new AuthStateMonitorService(
                 _authenticationService,
@@ -104,7 +107,9 @@ namespace TrayApp
 
             _namespaceSelectionMenuController = new NamespaceSelectionMenuController(
                 _registeredDeviceService,
-                _namespaceSelectionToolStripMenuItem);
+                _authorizationSessionStore,
+                _namespaceSelectionToolStripMenuItem,
+                HandleTopMenuNamespaceSelectionChanged);
 
             _userSelectionMenuController = new UserSelectionMenuController(
                 _registeredDeviceService,
@@ -131,6 +136,11 @@ namespace TrayApp
             _bootstrapRegistrationService.RegistrationFailed += OnRegistrationFailed;
 
             BootstrapRegistration();
+        }
+
+        protected override void SetVisibleCore(bool value)
+        {
+            base.SetVisibleCore(value && _allowInitialFormDisplay);
         }
 
         private async void BootstrapRegistration()
@@ -200,8 +210,8 @@ namespace TrayApp
                 _registrationPromptMode is RegistrationPromptMode.ServerRegistration or RegistrationPromptMode.NewServerRegistration)
             {
                 _lastTrayMessage = _registrationPromptMode == RegistrationPromptMode.NewServerRegistration
-                    ? "New server registration is complete."
-                    : "Namespace sync is complete.";
+                    ? "Server added successfully."
+                    : "Server sync is complete.";
                 _lastTrayMessageIcon = ToolTipIcon.Info;
                 _lastTrayStateUpdatedAt = DateTimeOffset.Now;
                 ResetInlineServerRegistrationState(clearInputs: true);
@@ -343,7 +353,7 @@ namespace TrayApp
             baseUrlLabel.Text = "Namespace url";
             namespaceNameLabel.Text = "Namespace name";
             continueRegistrationButton.Text = "Generate QR";
-            device_registration.Text = "Register new server";
+            device_registration.Text = "Add a server";
 
             try
             {
@@ -457,6 +467,8 @@ namespace TrayApp
                 return;
             }
 
+            _allowInitialFormDisplay = true;
+
             if (Opacity <= 0)
             {
                 Opacity = 1;
@@ -559,14 +571,13 @@ namespace TrayApp
         {
             bool showAuthenticationActions = _isDeviceRegistered;
             bool isAuthorized = _authenticationService.IsAuthorized;
-            bool isAuthorizedForActiveNamespace = _authenticationService.IsAuthorizedForActiveNamespace;
-            bool canLogin = showAuthenticationActions && !isAuthorizedForActiveNamespace;
+            bool canLogin = showAuthenticationActions && _authenticationService.CanLoginForActiveNamespace;
             bool canLogout = showAuthenticationActions && isAuthorized;
             bool expandedTrayView = _showExpandedTrayMenu && _isDeviceRegistered;
             bool hasUserSelectionItems = _userSelectionToolStripMenuItem.DropDownItems.Count > 0;
             bool hasNamespaceSelectionItems = _namespaceSelectionToolStripMenuItem.DropDownItems.Count > 0;
 
-            loginToolStripMenuItem.Visible = !expandedTrayView && canLogin;
+            loginToolStripMenuItem.Visible = !expandedTrayView && showAuthenticationActions;
             loginToolStripMenuItem.Enabled = canLogin && !_authenticationInProgress;
             logoutToolStripMenuItem.Visible = !expandedTrayView && canLogout;
             logoutToolStripMenuItem.Enabled = canLogout && !_authenticationInProgress;
@@ -578,6 +589,7 @@ namespace TrayApp
             _quickPanelPrimaryActionButton.Visible = canLogout;
             _quickPanelPrimaryActionButton.Enabled = canLogout && !_authenticationInProgress;
             _quickPanelRefreshButton.Enabled = showAuthenticationActions && !_quickPanelRefreshInProgress;
+            SetQuickPanelLoginNavigationEnabled(!_authenticationService.IsLoginNavigationDisabled);
 
             if (canLogout && !_authenticationInProgress)
             {
@@ -734,7 +746,7 @@ namespace TrayApp
                 bool authorized = await _authenticationService.EnsureAuthorizedForActiveNamespaceAsync(allowInteractiveLogin: true).ConfigureAwait(true);
                 if (!authorized)
                 {
-                    _authenticationService.RevokeAuthorization();
+                    _authenticationService.RevokeAuthorizationForActiveNamespace();
                     _extensionSessionStateStore.MarkInvalid("authorization_declined");
                     _authenticationInProgress = false;
                     UpdateAuthenticationMenuItems();
@@ -744,6 +756,7 @@ namespace TrayApp
                 _extensionSessionStateStore.MarkAuthorized();
                 _lastTrayMessage = "Desktop attestation is active.";
                 _lastTrayMessageIcon = ToolTipIcon.Info;
+                _trayMenuController?.SetActiveSection(TrayMenuSection.Credentials, triggerStateChanged: true);
             }
             catch (Exception ex)
             {

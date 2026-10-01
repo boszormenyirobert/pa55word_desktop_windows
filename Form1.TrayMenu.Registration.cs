@@ -73,13 +73,14 @@ namespace TrayApp
         private void ShowInlineUserRegistration()
         {
             if (_authenticationInProgress ||
-                _authenticationService.IsAuthorizedForActiveNamespace ||
+                _authenticationService.HasAnyRegisteredProfileWithActiveSession ||
                 _inlineUserRegistrationSubmitting ||
                 _inlineUserRegistrationAwaitingCompletion)
             {
                 return;
             }
 
+            _showInlineUserDeletion = false;
             _showInlineUserRegistration = true;
             _quickPanelUserRegistrationStatusLabel.Text = string.Empty;
             _quickPanelUserRegistrationQrPictureBox.Image = null;
@@ -98,6 +99,37 @@ namespace TrayApp
             _quickPanelUserRegistrationNameTextBox.Text = string.Empty;
             UpdateQuickPanelState();
             _quickPanelUserRegistrationNameTextBox.Focus();
+        }
+
+        private void ShowInlineUserDeletion()
+        {
+            if (_authenticationInProgress || !_authenticationService.IsAuthorized)
+            {
+                return;
+            }
+
+            _showInlineUserRegistration = false;
+            _showInlineUserDeletion = true;
+            string profileName = _registeredDeviceService.TryReadRegistration(out var registration) && registration != null
+                ? registration.DisplayUserName
+                : AppEnvironment.GetActiveUserId() ?? "Unknown profile";
+            _quickPanelUserDeletionProfileLabel.Text = $"Selected active profile to be deleted: {profileName}";
+            _quickPanelUserDeletionConfirmButton.Enabled = true;
+            _quickPanelUserDeletionConfirmButton.Text = "Delete profile";
+            UpdateQuickPanelState();
+        }
+
+        private void quickPanelUserDeletionCancelButton_Click(object? sender, EventArgs e)
+        {
+            _showInlineUserDeletion = false;
+            UpdateQuickPanelState();
+        }
+
+        private async void quickPanelUserDeletionConfirmButton_Click(object? sender, EventArgs e)
+        {
+            _quickPanelUserDeletionConfirmButton.Enabled = false;
+            _quickPanelUserDeletionConfirmButton.Text = "Deleting...";
+            await DeleteActiveUserProfileAsync();
         }
 
         private void ResetInlineUserRegistration()
@@ -179,8 +211,8 @@ namespace TrayApp
                     : RegistrationPromptMode.ServerRegistration;
                 _inlineServerRegistrationSubmitting = true;
                 _serverRegistrationStatusMessage = isNewServerRegistration
-                    ? "Generating QR code for new server registration."
-                    : "Generating QR code for namespace sync.";
+                    ? "Generating QR code to add the server."
+                    : "Generating QR code to sync the server.";
                 UpdateQuickPanelState();
 
                 if (isNewServerRegistration)
@@ -206,10 +238,10 @@ namespace TrayApp
 
                 _quickPanelServerRegistrationQrPictureBox.Image = qrCode;
                 _inlineServerRegistrationAwaitingCompletion = true;
-                _serverRegistrationStatusMessage = "QR generated. Waiting for mobile confirmation.";
+                _serverRegistrationStatusMessage = "QR generated. Scan it in the mobile app to complete registration.";
                 _lastTrayMessage = isNewServerRegistration
-                    ? "New server registration QR generated. Waiting for mobile confirmation."
-                    : "Namespace sync QR generated. Waiting for mobile confirmation.";
+                    ? "Server QR generated. Scan it in the mobile app to complete registration."
+                    : "Server sync QR generated. Scan it in the mobile app to complete registration.";
                 _lastTrayMessageIcon = ToolTipIcon.Info;
                 _lastTrayStateUpdatedAt = DateTimeOffset.Now;
                 _ = StartPollingAfterRenderAsync(_quickPanelServerRegistrationUrlTextBox.Text);

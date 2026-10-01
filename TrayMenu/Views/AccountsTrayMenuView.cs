@@ -7,8 +7,8 @@ namespace TrayApp.TrayMenu.Views
             return new TrayMenuViewState
             {
                 Eyebrow = "ACCOUNTS",
-                Title = "Server accounts",
-                Description = "Accounts stored in the local configuration.",
+                Title = "User account",
+                Description = "Deleting an account completely deregisters all registered devices, credentials, and recovery data, including email addresses and phone numbers. All user-related information is permanently deleted and cannot be recovered.",
                 InsightTitle = string.Empty,
                 InsightBody = string.Empty,
                 SelectionLayout = TrayMenuSelectionLayout.HomeSummary

@@ -67,6 +67,16 @@ namespace TrayApp
                 return;
             }
 
+            Point pointerInContainer = sender is Control source
+                ? _quickPanelContainer.PointToClient(source.PointToScreen(e.Location))
+                : e.Location;
+            if (pointerInContainer.X >= _quickPanelContainer.Width - 16 &&
+                pointerInContainer.Y >= _quickPanelContainer.Height - 16)
+            {
+                BeginQuickPanelResize(_quickPanelContainer);
+                return;
+            }
+
             _quickPanelDragging = true;
             Point screenPoint = Control.MousePosition;
             _quickPanelDragOffset = new Point(
@@ -76,6 +86,12 @@ namespace TrayApp
 
         private void quickPanelContainer_MouseMove(object? sender, MouseEventArgs e)
         {
+            if (_quickPanelResizing)
+            {
+                ResizeQuickPanel();
+                return;
+            }
+
             if (!_quickPanelDragging)
             {
                 return;
@@ -96,6 +112,7 @@ namespace TrayApp
                 return;
             }
 
+            EndQuickPanelResize();
             _quickPanelDragging = false;
         }
 
@@ -168,6 +185,49 @@ namespace TrayApp
             {
                 DoubleBuffered = true;
                 ResizeRedraw = true;
+            }
+
+            protected override bool ProcessDialogKey(Keys keyData)
+            {
+                if ((keyData & Keys.KeyCode) == Keys.Tab)
+                {
+                    List<Control> inputControls = GetVisibleInputControls(this);
+                    Control? focusedControl = inputControls.FirstOrDefault(control => control.Focused);
+
+                    if (focusedControl != null && inputControls.Count > 1)
+                    {
+                        bool forward = (keyData & Keys.Shift) != Keys.Shift;
+                        int currentIndex = inputControls.IndexOf(focusedControl);
+                        int nextIndex = (currentIndex + (forward ? 1 : inputControls.Count - 1)) % inputControls.Count;
+                        inputControls[nextIndex].Focus();
+                        return true;
+                    }
+                }
+
+                return base.ProcessDialogKey(keyData);
+            }
+
+            private static List<Control> GetVisibleInputControls(Control parent)
+            {
+                var inputControls = new List<Control>();
+                AddVisibleInputControls(parent, inputControls);
+                return inputControls
+                    .OrderBy(control => control.PointToScreen(Point.Empty).Y)
+                    .ThenBy(control => control.PointToScreen(Point.Empty).X)
+                    .ToList();
+            }
+
+            private static void AddVisibleInputControls(Control parent, ICollection<Control> inputControls)
+            {
+                foreach (Control child in parent.Controls)
+                {
+                    if (child.Visible && child.Enabled && child.TabStop && (child is TextBoxBase || child is ComboBox))
+                    {
+                        inputControls.Add(child);
+                    }
+
+                    AddVisibleInputControls(child, inputControls);
+                }
             }
         }
 

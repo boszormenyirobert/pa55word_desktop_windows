@@ -195,6 +195,29 @@ namespace TrayApp.Services
                 response.Registry);
         }
 
+        public async Task DeleteEntryAsync(int credentialId)
+        {
+            await EnsureAuthorizedForCredentialAccessAsync().ConfigureAwait(false);
+
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
+            var request = new ConnectionDeleteRequestDto
+            {
+                Id = credentialId,
+                AccountId = accountId,
+                DesktopDeviceId = desktopDeviceId,
+                DeviceName = TrayDeviceName,
+                Nonce = NonceGenerator.Create()
+            };
+
+            string payloadJson = JsonSerializer.Serialize(request);
+            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential delete request");
+
+            await _httpApiClient
+                .DeleteJsonAsync(CredentialApiEndpoints.Connection, request, headers)
+                .ConfigureAwait(false);
+        }
+
         public async Task<CredentialGroupDto?> CreateGroupAsync(string groupName, string? groupId = null)
         {
             await EnsureAuthorizedForCredentialAccessAsync().ConfigureAwait(false);
@@ -242,6 +265,34 @@ namespace TrayApp.Services
 
             return await _httpApiClient
                 .PutJsonAsync<CredentialGroupUpdateRequestDto, CredentialGroupDto>(CredentialApiEndpoints.Group, request, headers)
+                .ConfigureAwait(false);
+        }
+
+        public async Task<CredentialGroupDto?> DeleteGroupAsync(string groupId)
+        {
+            if (string.IsNullOrWhiteSpace(groupId))
+            {
+                throw new ArgumentException("Group deletion requires a group id.", nameof(groupId));
+            }
+
+            await EnsureAuthorizedForCredentialAccessAsync().ConfigureAwait(false);
+
+            string accountId = AppEnvironment.GetActiveNamespaceAccountId();
+            string desktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
+
+            var request = new CredentialGroupDeleteRequestDto
+            {
+                AccountId = accountId,
+                DesktopDeviceId = desktopDeviceId,
+                GroupId = groupId,
+                Nonce = NonceGenerator.Create()
+            };
+
+            string payloadJson = JsonSerializer.Serialize(request);
+            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group delete request");
+
+            return await _httpApiClient
+                .DeleteJsonAsync<CredentialGroupDeleteRequestDto, CredentialGroupDto>(CredentialApiEndpoints.Group, request, headers)
                 .ConfigureAwait(false);
         }
 

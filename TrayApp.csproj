@@ -20,4 +20,10 @@
     <Compile Remove="TrayApp.Tests\**\*.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="TrayMenu\FAQ\faq.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

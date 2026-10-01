@@ -212,6 +212,31 @@ namespace TrayApp.Services
             Debug.WriteLine($"Namespace removed: {namespaceId}");
         }
 
+        public bool RemoveRegistration(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId) ||
+                !TryReadRegistrations(out List<DesktopRegistration>? registrations) ||
+                registrations == null)
+            {
+                return false;
+            }
+
+            int removedCount = registrations.RemoveAll(registration =>
+                string.Equals(registration.UserKey, userId, StringComparison.Ordinal));
+            if (removedCount == 0)
+            {
+                return false;
+            }
+
+            List<Dictionary<string, object?>> registrationsForStorage = registrations
+                .Select(CreateStorageRegistrationObject)
+                .ToList();
+            string json = JsonSerializer.Serialize(registrationsForStorage, ConfigJsonOptions);
+            File.WriteAllText(filePath, json);
+            Debug.WriteLine($"Registration removed: {userId}");
+            return true;
+        }
+
         public void UpdateNamespaceAccountId(string userId, string namespaceId, string accountId, string? namespaceName = null)
         {
             if (string.IsNullOrWhiteSpace(namespaceId))

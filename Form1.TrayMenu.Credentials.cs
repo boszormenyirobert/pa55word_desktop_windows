@@ -14,7 +14,7 @@ namespace TrayApp
 
         private async Task EnsureCredentialCollectionLoadedAsync(bool forceRefresh = false)
         {
-            if (!_isDeviceRegistered || _credentialsLoading)
+            if (!_isDeviceRegistered || (_credentialsLoading && !forceRefresh))
             {
                 return;
             }

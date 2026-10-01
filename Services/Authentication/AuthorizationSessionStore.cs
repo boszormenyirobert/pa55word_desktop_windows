@@ -57,6 +57,20 @@ namespace TrayApp.Services
             }
         }
 
+        public bool HasActiveSessionForAnotherUser(string? activeUserId)
+        {
+            if (string.IsNullOrWhiteSpace(activeUserId))
+            {
+                return false;
+            }
+
+            lock (_syncRoot)
+            {
+                return GetActiveSnapshotsCore().Any(snapshot =>
+                    !string.Equals(snapshot.BoundUserId, activeUserId, StringComparison.Ordinal));
+            }
+        }
+
         public bool Matches(string boundUserId, string accountId, string desktopId, string baseUrl)
         {
             lock (_syncRoot)

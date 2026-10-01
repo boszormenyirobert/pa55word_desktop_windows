@@ -35,4 +35,22 @@ namespace TrayApp.Models
         [JsonPropertyName("nonce")]
         public string Nonce { get; set; } = string.Empty;
     }
+
+    internal sealed class ConnectionDeleteRequestDto
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("accountId")]
+        public string AccountId { get; set; } = string.Empty;
+
+        [JsonPropertyName("desktopDeviceId")]
+        public string DesktopDeviceId { get; set; } = string.Empty;
+
+        [JsonPropertyName("deviceName")]
+        public string DeviceName { get; set; } = string.Empty;
+
+        [JsonPropertyName("nonce")]
+        public string Nonce { get; set; } = string.Empty;
+    }
 }

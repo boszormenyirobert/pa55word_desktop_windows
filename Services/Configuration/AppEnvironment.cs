@@ -45,6 +45,14 @@ namespace TrayApp.Services
             }
         }
 
+        public static void ClearActiveSelection()
+        {
+            lock (SelectionLock)
+            {
+                _activeSelection = new ActiveRegistrationSelection(null, null);
+            }
+        }
+
         public static void SetActiveUser(string userId)
         {
             if (string.IsNullOrWhiteSpace(userId))

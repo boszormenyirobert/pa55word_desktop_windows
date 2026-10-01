@@ -7,8 +7,8 @@ namespace TrayApp.TrayMenu.Views
             return new TrayMenuViewState
             {
                 Eyebrow = "SETTINGS",
-                Title = "User accounts",
-                Description = "Choose an account action.",
+                Title = "Profile",
+                Description = "Choose a profile action.",
                 InsightTitle = string.Empty,
                 InsightBody = string.Empty,
                 SelectionLayout = TrayMenuSelectionLayout.SettingsUserActions

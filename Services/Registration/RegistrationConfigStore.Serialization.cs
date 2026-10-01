@@ -33,6 +33,12 @@ namespace TrayApp.Services
                 };
             }
 
+            using JsonDocument document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                return new ConfigModel();
+            }
+
             return JsonSerializer.Deserialize<ConfigModel>(json, BootstrapConfigJsonOptions) ?? new ConfigModel();
         }
 
