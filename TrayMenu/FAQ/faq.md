@@ -40,6 +40,8 @@ Sign in to the active server, then open Credentials. Create a group when you wan
 
 The active server and selected group control the entries displayed in this view.
 
+When you close the panel and reopen it from the tray while Credentials is active, the group and entry selectors keep their current selections.
+
 ## How do I remove a device?
 
 Open Settings, then Devices. Select the device you no longer trust and remove it. Removing a device prevents it from approving or accessing your account according to the server's device policy.
