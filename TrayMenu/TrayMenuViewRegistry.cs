@@ -11,6 +11,7 @@ namespace TrayApp.TrayMenu
             _views = new Dictionary<TrayMenuSection, ITrayMenuView>
             {
                 [TrayMenuSection.Login] = new LoginTrayMenuView(),
+                [TrayMenuSection.Settings] = new SettingsTrayMenuView(),
                 [TrayMenuSection.SettingsUsers] = new SettingsUsersTrayMenuView(),
                 [TrayMenuSection.SettingsServers] = new SettingsServersTrayMenuView(),
                 [TrayMenuSection.Devices] = new DevicesTrayMenuView(),

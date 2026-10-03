@@ -8,7 +8,7 @@ namespace TrayApp.TrayMenu.Views
             {
                 Eyebrow = "ACCOUNTS",
                 Title = "User account",
-                Description = "Deleting an account completely deregisters all registered devices, credentials, and recovery data, including email addresses and phone numbers. All user-related information is permanently deleted and cannot be recovered.",
+                Description = "Deleting an account is an irreversible process.",
                 InsightTitle = string.Empty,
                 InsightBody = string.Empty,
                 SelectionLayout = TrayMenuSelectionLayout.HomeSummary
