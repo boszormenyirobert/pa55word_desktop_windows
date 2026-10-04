@@ -32,6 +32,17 @@ public sealed class TrayMenuViewTests
     }
 
     [Fact]
+    public void SettingsOverview_UsesItsDedicatedLayout()
+    {
+        var registry = new TrayMenuViewRegistry();
+
+        TrayMenuViewState viewState = registry.Build(TrayMenuSection.Settings, new TrayMenuContext());
+
+        Assert.Equal("Settings", viewState.Title);
+        Assert.Equal(TrayMenuSelectionLayout.None, viewState.SelectionLayout);
+    }
+
+    [Fact]
     public void TrayMenuController_StartsOnLogin()
     {
         var controller = new TrayMenuController((_, _) => { }, () => { });

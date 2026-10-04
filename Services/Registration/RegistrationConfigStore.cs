@@ -208,6 +208,14 @@ namespace TrayApp.Services
             }
 
             registration.Namespaces.Remove(namespaceItem);
+
+            if (registration.Namespaces.Count == 0)
+            {
+                RemoveRegistration(registration.UserKey);
+                Debug.WriteLine($"Registration removed after its final namespace was deleted: {registration.UserKey}");
+                return;
+            }
+
             SaveRegistration(registration);
             Debug.WriteLine($"Namespace removed: {namespaceId}");
         }

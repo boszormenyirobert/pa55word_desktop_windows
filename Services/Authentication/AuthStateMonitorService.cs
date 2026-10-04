@@ -5,7 +5,7 @@ namespace TrayApp.Services
     internal sealed class AuthStateMonitorService : IDisposable
     {
         private static readonly bool BackgroundPollingEnabled = true;
-        private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan PollInterval = TimeSpan.FromMinutes(1);
 
         private readonly AuthenticationService _authenticationService;
         private readonly ExtensionSessionStateStore _extensionSessionStateStore;
@@ -45,14 +45,33 @@ namespace TrayApp.Services
 
         private async Task RunAsync(CancellationToken cancellationToken)
         {
-            using var timer = new PeriodicTimer(PollInterval);
+            _log?.Invoke($"[AUTH-MONITOR] Background polling started ({PollInterval}).");
 
-            await EvaluateAsync(cancellationToken).ConfigureAwait(false);
-
-            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            try
             {
-                await EvaluateAsync(cancellationToken).ConfigureAwait(false);
+                using var timer = new PeriodicTimer(PollInterval);
+
+                do
+                {
+                    try
+                    {
+                        await EvaluateAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        _log?.Invoke($"[AUTH-MONITOR] Poll iteration failed: {ex}");
+                    }
+                }
+                while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false));
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            _log?.Invoke("[AUTH-MONITOR] Background polling stopped.");
         }
 
         private async Task EvaluateAsync(CancellationToken cancellationToken)
@@ -61,6 +80,14 @@ namespace TrayApp.Services
             {
                 return;
             }
+
+            if (!_authenticationService.HasActiveRegistration)
+            {
+                _log?.Invoke("[AUTH-MONITOR] Skipping poll: no active registration.");
+                return;
+            }
+
+            _log?.Invoke("[AUTH-MONITOR] Checking active profile device registration.");
 
             try
             {
@@ -94,7 +121,14 @@ namespace TrayApp.Services
             }
             finally
             {
-                _stateEvaluated?.Invoke();
+                try
+                {
+                    _stateEvaluated?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    _log?.Invoke($"[AUTH-MONITOR] State evaluated callback failed: {ex.Message}");
+                }
             }
         }
     }

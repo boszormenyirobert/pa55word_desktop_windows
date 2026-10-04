@@ -71,5 +71,10 @@ namespace TrayApp.Services
         {
             _configStore.SaveNamespaces(AppEnvironment.GetActiveUserId() ?? string.Empty, accountId, desktopDeviceId, namespaces);
         }
+
+        public void RemoveNamespace(string userId, string namespaceId)
+        {
+            _configStore.RemoveNamespace(userId, namespaceId);
+        }
     }
 }

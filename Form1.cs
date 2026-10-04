@@ -68,9 +68,14 @@ namespace TrayApp
                 _authenticationService,
                 _extensionSessionStateStore,
                 HandleAuthorizationStateEvaluated,
-                message => Debug.WriteLine(message));
+                message =>
+                {
+                    Debug.WriteLine(message);
+                    DiagnosticLog.Write(message);
+                });
 
             _extensionSessionStateStore.StateChanged += HandleExtensionSessionStateChanged;
+            _authenticationService.DeviceRegistrationRemoved += HandleDeviceRegistrationRemoved;
 
             _credentialCollectionService = new CredentialCollectionService(
                 _registeredDeviceService,
@@ -135,6 +140,12 @@ namespace TrayApp
             _bootstrapRegistrationService.RegistrationCompleted += OnRegistrationCompleted;
             _bootstrapRegistrationService.RegistrationFailed += OnRegistrationFailed;
 
+            // The form stays hidden in tray mode, so create the handle explicitly to allow background services to marshal to the UI thread.
+            if (!IsHandleCreated)
+            {
+                CreateHandle();
+            }
+
             BootstrapRegistration();
         }
 
@@ -188,6 +199,11 @@ namespace TrayApp
 
         private void OnRegistrationCompleted()
         {
+            if (IsDisposed || Disposing || !IsHandleCreated)
+            {
+                return;
+            }
+
             if (InvokeRequired)
             {
                 BeginInvoke(new Action(OnRegistrationCompleted));
@@ -226,6 +242,11 @@ namespace TrayApp
 
         private void OnRegistrationFailed(string message)
         {
+            if (IsDisposed || Disposing || !IsHandleCreated)
+            {
+                return;
+            }
+
             if (InvokeRequired)
             {
                 BeginInvoke(new Action<string>(OnRegistrationFailed), message);
@@ -499,6 +520,11 @@ namespace TrayApp
 
         private void HandleAuthorizationNotificationChanged(string? message, ToolTipIcon icon)
         {
+            if (IsDisposed || Disposing || !IsHandleCreated)
+            {
+                return;
+            }
+
             if (InvokeRequired)
             {
                 BeginInvoke(new Action<string?, ToolTipIcon>(HandleAuthorizationNotificationChanged), message, icon);
@@ -533,6 +559,11 @@ namespace TrayApp
 
         private void HandleExtensionSessionStateChanged(ExtensionSessionStateResponseDto state)
         {
+            if (IsDisposed || Disposing || !IsHandleCreated)
+            {
+                return;
+            }
+
             if (InvokeRequired)
             {
                 BeginInvoke(new Action<ExtensionSessionStateResponseDto>(HandleExtensionSessionStateChanged), state);
@@ -556,6 +587,11 @@ namespace TrayApp
 
         private void HandleAuthorizationStateEvaluated()
         {
+            if (IsDisposed || Disposing || !IsHandleCreated)
+            {
+                return;
+            }
+
             if (InvokeRequired)
             {
                 BeginInvoke(new Action(HandleAuthorizationStateEvaluated));
@@ -565,6 +601,55 @@ namespace TrayApp
             _lastTrayStateUpdatedAt = DateTimeOffset.Now;
             UpdateAuthenticationMenuItems();
             UpdateQuickPanelState();
+        }
+
+        private void HandleDeviceRegistrationRemoved()
+        {
+            if (IsDisposed || Disposing || !IsHandleCreated)
+            {
+                return;
+            }
+
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(HandleDeviceRegistrationRemoved));
+                return;
+            }
+
+            _credentialGroups = Array.Empty<CredentialGroupDto>();
+            _credentialEntries = Array.Empty<CredentialEntryListItem>();
+            _credentialEntryDetails.Clear();
+            _selectedCredentialGroupId = string.Empty;
+            _selectedCredentialEntryId = string.Empty;
+            _credentialCollectionCacheKey = string.Empty;
+            _credentialCollectionLoaded = false;
+            _credentialSelectorsFingerprint = string.Empty;
+            _lastTrayMessage = AuthenticationService.DeviceRemovedMessage;
+            _lastTrayMessageIcon = ToolTipIcon.Warning;
+            _lastTrayStateUpdatedAt = DateTimeOffset.Now;
+
+            bool hasRegistrations = _registeredDeviceService.TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? registrations) &&
+                registrations is { Count: > 0 };
+            if (!hasRegistrations)
+            {
+                _isDeviceRegistered = false;
+            }
+
+            _extensionSessionStateStore.MarkInvalid(AuthenticationService.DeviceRemovedReason);
+
+            if (!hasRegistrations)
+            {
+                CloseQuickPanel();
+                UpdateAuthenticationMenuItems();
+                return;
+            }
+
+            _trayMenuController?.SetActiveSection(TrayMenuSection.Login);
+            _userSelectionMenuController.RefreshMenu();
+            _namespaceSelectionMenuController.RefreshMenu();
+            RefreshQuickPanelSelections();
+            UpdateQuickPanelState();
+            UpdateAuthenticationMenuItems();
         }
 
         private void UpdateAuthenticationMenuItems()
@@ -589,7 +674,7 @@ namespace TrayApp
             _quickPanelPrimaryActionButton.Visible = canLogout;
             _quickPanelPrimaryActionButton.Enabled = canLogout && !_authenticationInProgress;
             _quickPanelRefreshButton.Enabled = showAuthenticationActions && !_quickPanelRefreshInProgress;
-            SetQuickPanelLoginNavigationEnabled(!_authenticationService.IsLoginNavigationDisabled);
+            SetQuickPanelLoginNavigationEnabled(true);
 
             if (canLogout && !_authenticationInProgress)
             {
@@ -748,6 +833,7 @@ namespace TrayApp
                 {
                     _authenticationService.RevokeAuthorizationForActiveNamespace();
                     _extensionSessionStateStore.MarkInvalid("authorization_declined");
+                    RefreshQuickPanelSelections();
                     _authenticationInProgress = false;
                     UpdateAuthenticationMenuItems();
                     return;

@@ -56,6 +56,8 @@ namespace TrayApp.Services
                 return CreateErrorResponseJson("parse_error", "Payload is empty or invalid JSON.");
             }
 
+            string requestDesktopDeviceId = string.Empty;
+
             try
             {
                 if (IsSessionStateRequest(payload))
@@ -81,6 +83,7 @@ namespace TrayApp.Services
                 }
 
                 _extensionSessionStateStore.MarkAuthorized();
+                requestDesktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId();
 
                 if (IsGroupRequest(payload))
                 {
@@ -113,6 +116,19 @@ namespace TrayApp.Services
                 }
 
                 return CreateErrorResponseJson("unsupported_operation", $"Unsupported rest operation: {payload.Rest}");
+            }
+            catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                if (!_authenticationService.TryHandleDeviceRemoved(ex, requestDesktopDeviceId))
+                {
+                    _log?.Invoke($"[EXT->APP] Processing error: {ex.Message}");
+                    return CreateErrorResponseJson("processing_error", ex.Message);
+                }
+
+                _authenticationService.RevokeAuthorization();
+                _extensionSessionStateStore.MarkInvalid(AuthenticationService.DeviceRemovedReason);
+                _log?.Invoke($"[EXT->APP] Desktop device was removed from the account: {ex.Message}");
+                return CreateErrorResponseJson(AuthenticationService.DeviceRemovedReason, AuthenticationService.DeviceRemovedMessage);
             }
             catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {

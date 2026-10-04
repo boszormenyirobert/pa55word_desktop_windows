@@ -25,11 +25,11 @@ namespace TrayApp.Services
                 payloadJson,
                 "account device list request");
 
-            AccountDevicesResponseDto? response = await _httpApiClient
+            AccountDevicesResponseDto? response = await SendAsync(request.DesktopDeviceId, () => _httpApiClient
                 .PostJsonAsync<AccountDevicesRequestDto, AccountDevicesResponseDto>(
                     AppEnvironment.BuildApiUrl(ApiRoutes.AccountDevices),
                     request,
-                    headers)
+                    headers))
                 .ConfigureAwait(false);
 
             EnsureSuccess(response?.Success ?? false, response?.Error, "The account device list could not be loaded.");
@@ -47,14 +47,31 @@ namespace TrayApp.Services
                 payloadJson,
                 "account device deletion request");
 
-            AccountDeviceDeleteResponseDto? response = await _httpApiClient
+            AccountDeviceDeleteResponseDto? response = await SendAsync(request.DesktopDeviceId, () => _httpApiClient
                 .DeleteJsonAsync<AccountDeviceDeleteRequestDto, AccountDeviceDeleteResponseDto>(
                     AppEnvironment.BuildApiUrl(ApiRoutes.AccountDevices),
                     request,
-                    headers)
+                    headers))
                 .ConfigureAwait(false);
 
             EnsureSuccess(response?.Success ?? false, response?.Error, "The account device could not be deleted.");
+        }
+
+        private async Task<T> SendAsync<T>(string desktopDeviceId, Func<Task<T>> send)
+        {
+            try
+            {
+                return await send().ConfigureAwait(false);
+            }
+            catch (ApiRequestException ex)
+            {
+                if (_authenticationService.TryHandleDeviceRemoved(ex, desktopDeviceId))
+                {
+                    throw new InvalidOperationException(AuthenticationService.DeviceRemovedMessage, ex);
+                }
+
+                throw;
+            }
         }
 
         private AccountDevicesRequestDto CreateRequest()

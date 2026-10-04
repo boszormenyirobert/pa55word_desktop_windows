@@ -22,11 +22,19 @@ namespace TrayApp.Models
         public bool Authorized { get; init; }
         public bool ExplicitlyInvalid { get; init; }
         public bool TransientFailure { get; init; }
+        public bool DeviceRemoved { get; init; }
         public string? Reason { get; init; }
 
         public static AuthorizationHealthResult Active() => new()
         {
             Authorized = true
+        };
+
+        public static AuthorizationHealthResult Removed(string reason) => new()
+        {
+            ExplicitlyInvalid = true,
+            DeviceRemoved = true,
+            Reason = reason
         };
 
         public static AuthorizationHealthResult Invalid(string reason) => new()

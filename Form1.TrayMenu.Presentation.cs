@@ -258,30 +258,5 @@ namespace TrayApp
             public override Color MenuItemPressedGradientEnd => Color.FromArgb(53, 104, 147);
         }
 
-        private sealed class SettingsHoverMenuRenderer : ToolStripProfessionalRenderer
-        {
-            public SettingsHoverMenuRenderer(ProfessionalColorTable colorTable)
-                : base(colorTable)
-            {
-            }
-
-            protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
-            {
-                Rectangle textBounds = e.TextRectangle;
-                textBounds.Y += 8;
-
-                TextRenderer.DrawText(
-                    e.Graphics,
-                    e.Text,
-                    e.TextFont,
-                    textBounds,
-                    e.TextColor,
-                    TextFormatFlags.Left |
-                    TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.SingleLine |
-                    TextFormatFlags.NoPrefix);
-            }
-        }
-
     }
 }

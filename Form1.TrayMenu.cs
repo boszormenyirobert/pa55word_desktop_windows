@@ -20,6 +20,10 @@ namespace TrayApp
         private const int EmSetMargins = 0x00D3;
         private const int EcLeftMargin = 0x0001;
         private const int EcRightMargin = 0x0002;
+        private const int QuickPanelGuidanceLeft = 32;
+        private const int QuickPanelGuidanceTop = 190;
+        private const int QuickPanelGuidanceListTop = 384;
+        private const int QuickPanelContentBottomMargin = 15;
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -46,18 +50,23 @@ namespace TrayApp
         private readonly Button _quickPanelLoginNavButton = new();
         private readonly FlowLayoutPanel _quickPanelAccountsPanel = new();
         private readonly FlowLayoutPanel _quickPanelDevicesPanel = new();
+        private readonly Panel _quickPanelAccountsGuidancePanel = new();
+        private readonly RichTextBox _quickPanelAccountsGuidanceBox = new();
         private readonly Panel _quickPanelFaqPanel = new();
         private readonly Panel _quickPanelDevicesGuidancePanel = new();
         private readonly RichTextBox _quickPanelDevicesGuidanceBox = new();
         private readonly Button _quickPanelCredentialsNavButton = new();
         private readonly Button _quickPanelSettingsNavButton = new();
         private readonly Button _quickPanelFaqNavButton = new();
-        private readonly ContextMenuStrip _settingsHoverMenu = new();
-        private readonly ToolStripMenuItem _settingsUsersMenuItem = new("Profile");
-        private readonly ToolStripMenuItem _settingsServersMenuItem = new("Servers");
-        private readonly ToolStripMenuItem _settingsDevicesMenuItem = new("Devices");
-        private readonly ToolStripMenuItem _settingsAccountMenuItem = new("Account");
-        private readonly System.Windows.Forms.Timer _settingsHoverCloseTimer = new() { Interval = 150 };
+        private readonly Panel _quickPanelSettingsOverviewPanel = new();
+        private readonly FlowLayoutPanel _quickPanelSettingsNavigationPanel = new();
+        private readonly RichTextBox _quickPanelSettingsDescriptionBox = new();
+        private readonly Label _quickPanelSettingsOverviewLink = new();
+        private readonly Label _quickPanelSettingsProfileLink = new();
+        private readonly Label _quickPanelSettingsServersLink = new();
+        private readonly Label _quickPanelSettingsDevicesLink = new();
+        private readonly Label _quickPanelSettingsAccountLink = new();
+        private string _settingsAccessMessage = string.Empty;
         private readonly Label _quickPanelActionSectionLabel = new();
         private readonly Label _quickPanelDetailEyebrowLabel = new();
         private readonly Label _quickPanelDetailTitleLabel = new();
@@ -135,6 +144,7 @@ namespace TrayApp
         private readonly Label _quickPanelGroupStatusLabel = new();
         private readonly Panel _quickPanelGroupDeletionInfoPanel = new();
         private readonly Label _quickPanelGroupDeletionInfoLabel = new();
+        private readonly Label _quickPanelCredentialEditorModeLabel = new();
         private readonly Label _quickPanelCredentialLabelEditorLabel = new();
         private readonly TextBox _quickPanelCredentialLabelTextBox = new();
         private readonly Label _quickPanelCredentialAssignedGroupLabel = new();
@@ -285,7 +295,6 @@ namespace TrayApp
 
             BuildQuickPanel();
             InitializeQuickPanelDropDown();
-            ApplyRegistrationLayout();
         }
 
         private void InitializeQuickPanelDropDown()
@@ -397,7 +406,7 @@ namespace TrayApp
             ConfigureQuickPanelNavigationButton(_quickPanelCredentialsNavButton, "Credentials");
             ConfigureQuickPanelNavigationButton(_quickPanelSettingsNavButton, "Settings");
             ConfigureQuickPanelNavigationButton(_quickPanelFaqNavButton, "FAQ");
-            InitializeSettingsHoverMenu();
+            _quickPanelSettingsNavButton.Click += settingsNavButton_Click;
 
             _quickPanelNavigationPanel.Controls.Add(_quickPanelLoginNavButton);
             _quickPanelNavigationPanel.Controls.Add(_quickPanelCredentialsNavButton);
@@ -560,6 +569,8 @@ namespace TrayApp
             _quickPanelSelectionCard.Controls.Add(_quickPanelServerStatusValueLabel);
             _quickPanelSelectionCard.Controls.Add(_quickPanelServerLoginInlineButton);
 
+            InitializeSettingsOverviewPanel();
+
             ConfigureQuickPanelSummaryValueLabel(_quickPanelHomeActiveUserLabel);
             ConfigureQuickPanelSummaryValueLabel(_quickPanelHomeActiveServerLabel);
             ConfigureQuickPanelSummaryValueLabel(_quickPanelHomeSessionLabel);
@@ -673,6 +684,7 @@ namespace TrayApp
             _quickPanelDetailPanel.Controls.Add(_quickPanelSelectionCard);
             _quickPanelDetailPanel.Controls.Add(_quickPanelMetricsCard);
             _quickPanelDetailPanel.Controls.Add(_quickPanelInsightCard);
+            _quickPanelDetailPanel.Controls.Add(_quickPanelSettingsOverviewPanel);
             _quickPanelDetailPanel.Controls.Add(_quickPanelCredentialWorkspacePanel);
             ConfigureQuickPanelDragHandle(_quickPanelDetailPanel);
             InitializeInlineUserRegistrationPanel();
@@ -687,6 +699,9 @@ namespace TrayApp
             _quickPanelAccountsPanel.Size = new Size(578, 390);
             _quickPanelAccountsPanel.Visible = false;
             _quickPanelDetailPanel.Controls.Add(_quickPanelAccountsPanel);
+
+            ConfigureAccountsGuidanceBox();
+            _quickPanelDetailPanel.Controls.Add(_quickPanelAccountsGuidancePanel);
 
             _quickPanelDevicesPanel.FlowDirection = FlowDirection.TopDown;
             _quickPanelDevicesPanel.WrapContents = false;
@@ -709,6 +724,7 @@ namespace TrayApp
             _quickPanelResizeGrip.Cursor = Cursors.SizeNS;
             _quickPanelResizeGrip.Location = new Point(_quickPanelContainer.Width - 16, _quickPanelContainer.Height - 16);
             _quickPanelResizeGrip.Size = new Size(16, 16);
+            _quickPanelResizeGrip.Paint += DrawQuickPanelResizeGripIcon;
             _quickPanelResizeGrip.MouseDown += quickPanelResizeGrip_MouseDown;
             _quickPanelResizeGrip.MouseMove += quickPanelResizeGrip_MouseMove;
             _quickPanelResizeGrip.MouseUp += quickPanelResizeGrip_MouseUp;
@@ -716,6 +732,59 @@ namespace TrayApp
             _quickPanelResizeGrip.BringToFront();
 
             ResumeLayout(performLayout: false);
+        }
+
+        private void InitializeSettingsOverviewPanel()
+        {
+            _quickPanelSettingsOverviewPanel.BackColor = Color.Transparent;
+            _quickPanelSettingsOverviewPanel.Location = new Point(32, 152);
+            _quickPanelSettingsOverviewPanel.Size = new Size(578, 390);
+            _quickPanelSettingsOverviewPanel.Visible = false;
+
+            _quickPanelSettingsNavigationPanel.AutoSize = true;
+            _quickPanelSettingsNavigationPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            _quickPanelSettingsNavigationPanel.BackColor = Color.Transparent;
+            _quickPanelSettingsNavigationPanel.FlowDirection = FlowDirection.LeftToRight;
+            _quickPanelSettingsNavigationPanel.Location = Point.Empty;
+            _quickPanelSettingsNavigationPanel.Margin = Padding.Empty;
+            _quickPanelSettingsNavigationPanel.Padding = Padding.Empty;
+            _quickPanelSettingsNavigationPanel.WrapContents = false;
+
+            ConfigureSettingsOverviewLink(_quickPanelSettingsOverviewLink, "Overview", TrayMenuSection.Settings);
+            ConfigureSettingsOverviewLink(_quickPanelSettingsProfileLink, "Profile", TrayMenuSection.SettingsUsers);
+            ConfigureSettingsOverviewLink(_quickPanelSettingsServersLink, "Servers", TrayMenuSection.SettingsServers);
+            ConfigureSettingsOverviewLink(_quickPanelSettingsDevicesLink, "Devices", TrayMenuSection.Devices);
+            ConfigureSettingsOverviewLink(_quickPanelSettingsAccountLink, "Account", TrayMenuSection.Accounts);
+
+            _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsOverviewLink);
+            _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsProfileLink);
+            _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsServersLink);
+            _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsDevicesLink);
+            _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsAccountLink);
+
+            _quickPanelSettingsDescriptionBox.BackColor = Color.FromArgb(31, 33, 57);
+            _quickPanelSettingsDescriptionBox.BorderStyle = BorderStyle.None;
+            _quickPanelSettingsDescriptionBox.Cursor = Cursors.Default;
+            _quickPanelSettingsDescriptionBox.Font = new Font("Segoe UI", 9.5F);
+            _quickPanelSettingsDescriptionBox.ForeColor = Color.FromArgb(220, 222, 241);
+            _quickPanelSettingsDescriptionBox.Location = new Point(0, 38);
+            _quickPanelSettingsDescriptionBox.ReadOnly = true;
+            _quickPanelSettingsDescriptionBox.ScrollBars = RichTextBoxScrollBars.Vertical;
+            _quickPanelSettingsDescriptionBox.Size = new Size(578, 337);
+            _quickPanelSettingsDescriptionBox.TabStop = false;
+
+            _quickPanelSettingsOverviewPanel.Controls.Add(_quickPanelSettingsNavigationPanel);
+            _quickPanelSettingsOverviewPanel.Controls.Add(_quickPanelSettingsDescriptionBox);
+        }
+
+        private void ConfigureSettingsOverviewLink(Label label, string text, TrayMenuSection section)
+        {
+            label.AutoSize = true;
+            label.Cursor = Cursors.Hand;
+            label.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
+            label.Margin = new Padding(0, 0, 20, 0);
+            label.Text = text;
+            label.Click += async (_, _) => await NavigateFromSettingsOverviewAsync(section);
         }
 
         private void ConfigureQuickPanelNavigationButton(Button button, string text)
@@ -785,141 +854,65 @@ namespace TrayApp
             eventArgs.Graphics.DrawLine(pen, bounds.Width - 9, 9, 9, bounds.Height - 9);
         }
 
-        private void InitializeSettingsHoverMenu()
+        private static void DrawQuickPanelResizeGripIcon(object? sender, PaintEventArgs eventArgs)
         {
-            _settingsHoverMenu.ShowImageMargin = false;
-            _settingsHoverMenu.BackColor = Color.FromArgb(36, 38, 63);
-            _settingsHoverMenu.ForeColor = Color.White;
-            _settingsHoverMenu.RenderMode = ToolStripRenderMode.Professional;
-            _settingsHoverMenu.Renderer = new SettingsHoverMenuRenderer(new TrayMenuColorTable());
-
-            ConfigureSettingsHoverMenuItem(_settingsUsersMenuItem);
-            ConfigureSettingsHoverMenuItem(_settingsServersMenuItem);
-            ConfigureSettingsHoverMenuItem(_settingsDevicesMenuItem);
-            ConfigureSettingsHoverMenuItem(_settingsAccountMenuItem);
-
-            _settingsUsersMenuItem.Click += settingsUsersMenuItem_Click;
-            _settingsServersMenuItem.Click += settingsServersMenuItem_Click;
-            _settingsDevicesMenuItem.Click += settingsDevicesMenuItem_Click;
-            _settingsAccountMenuItem.Click += settingsAccountMenuItem_Click;
-
-            _settingsHoverMenu.Items.AddRange(new ToolStripItem[]
+            if (sender is not Control grip)
             {
-                _settingsUsersMenuItem,
-                _settingsServersMenuItem,
-                _settingsDevicesMenuItem,
-                _settingsAccountMenuItem
-            });
+                return;
+            }
 
-            _quickPanelSettingsNavButton.MouseEnter += settingsNavButton_MouseEnter;
-            _quickPanelSettingsNavButton.MouseLeave += settingsNavButton_MouseLeave;
-            _quickPanelSettingsNavButton.Click += settingsNavButton_Click;
-            _settingsHoverMenu.MouseEnter += settingsHoverMenu_MouseEnter;
-            _settingsHoverMenu.MouseLeave += settingsHoverMenu_MouseLeave;
-            _settingsHoverCloseTimer.Tick += settingsHoverCloseTimer_Tick;
-        }
+            using var pen = new Pen(Color.FromArgb(171, 174, 211), 1.5F);
+            int right = grip.ClientRectangle.Width - 3;
+            int bottom = grip.ClientRectangle.Height - 3;
 
-        private static void ConfigureSettingsHoverMenuItem(ToolStripMenuItem menuItem)
-        {
-            menuItem.AutoSize = false;
-            menuItem.Size = new Size(140, 32);
-            menuItem.Font = new Font("Segoe UI Semibold", 8.5F, FontStyle.Bold);
-            menuItem.Padding = new Padding(8, 6, 8, 6);
-            menuItem.ForeColor = Color.White;
-        }
-
-        private void settingsUsersMenuItem_Click(object? sender, EventArgs e)
-        {
-            _settingsHoverMenu.Close();
-            _trayMenuController?.SetActiveSection(TrayMenuSection.SettingsUsers, triggerStateChanged: true);
+            eventArgs.Graphics.DrawLine(pen, 5, bottom, right, 5);
+            eventArgs.Graphics.DrawLine(pen, 8, bottom, right, 8);
+            eventArgs.Graphics.DrawLine(pen, 11, bottom, right, 11);
         }
 
         private void settingsNavButton_Click(object? sender, EventArgs e)
         {
-            settingsUsersMenuItem_Click(sender, e);
+            _settingsAccessMessage = string.Empty;
+            _trayMenuController?.SetActiveSection(TrayMenuSection.Settings, triggerStateChanged: true);
         }
 
-        private void settingsAccountMenuItem_Click(object? sender, EventArgs e)
+        private async Task NavigateFromSettingsOverviewAsync(TrayMenuSection section)
         {
-            _settingsHoverMenu.Close();
-            _trayMenuController?.SetActiveSection(TrayMenuSection.Accounts, triggerStateChanged: true);
-        }
-
-        private void settingsServersMenuItem_Click(object? sender, EventArgs e)
-        {
-            _settingsHoverMenu.Close();
-            _trayMenuController?.SetActiveSection(TrayMenuSection.SettingsServers, triggerStateChanged: true);
-        }
-
-        private async void settingsDevicesMenuItem_Click(object? sender, EventArgs e)
-        {
-            _settingsHoverMenu.Close();
-
-            if (!_authenticationService.IsAuthorizedForActiveNamespace)
+            if (RequiresSettingsAuthentication(section) && !_authenticationService.IsAuthorized)
             {
-                MessageBox.Show(
-                    "Log in to the active server before managing devices.",
-                    "Devices",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                _trayMenuController?.SetActiveSection(TrayMenuSection.Login, triggerStateChanged: true);
+                ShowSettingsAccessMessage("Log in to access Servers, Devices, and Account settings.");
                 return;
             }
 
+            if (section != TrayMenuSection.Devices)
+            {
+                _settingsAccessMessage = string.Empty;
+                _trayMenuController?.SetActiveSection(section, triggerStateChanged: true);
+                return;
+            }
+
+            if (!_authenticationService.IsAuthorizedForActiveNamespace)
+            {
+                ShowSettingsAccessMessage("Log in to the active server before managing devices.");
+                return;
+            }
+
+            _settingsAccessMessage = string.Empty;
             _trayMenuController?.SetActiveSection(TrayMenuSection.Devices, triggerStateChanged: true);
             await LoadAccountDevicesAsync();
         }
 
-        private void settingsNavButton_MouseEnter(object? sender, EventArgs e)
+        private static bool RequiresSettingsAuthentication(TrayMenuSection section)
         {
-            _settingsHoverCloseTimer.Stop();
-
-            if (!_showExpandedTrayMenu || _settingsHoverMenu.Visible)
-            {
-                return;
-            }
-
-            Point location = _quickPanelSettingsNavButton.PointToScreen(new Point(_quickPanelSettingsNavButton.Width + 4, 0));
-            _settingsHoverMenu.Show(location);
+            return section is TrayMenuSection.SettingsServers or
+                TrayMenuSection.Devices or
+                TrayMenuSection.Accounts;
         }
 
-        private void settingsNavButton_MouseLeave(object? sender, EventArgs e)
+        private void ShowSettingsAccessMessage(string message)
         {
-            StartSettingsHoverCloseTimer();
-        }
-
-        private void settingsHoverMenu_MouseEnter(object? sender, EventArgs e)
-        {
-            _settingsHoverCloseTimer.Stop();
-        }
-
-        private void settingsHoverMenu_MouseLeave(object? sender, EventArgs e)
-        {
-            StartSettingsHoverCloseTimer();
-        }
-
-        private void StartSettingsHoverCloseTimer()
-        {
-            if (_settingsHoverMenu.Visible)
-            {
-                _settingsHoverCloseTimer.Start();
-            }
-        }
-
-        private void settingsHoverCloseTimer_Tick(object? sender, EventArgs e)
-        {
-            if (IsPointerOver(_quickPanelSettingsNavButton) || _settingsHoverMenu.Bounds.Contains(Cursor.Position))
-            {
-                return;
-            }
-
-            _settingsHoverCloseTimer.Stop();
-            _settingsHoverMenu.Close();
-        }
-
-        private static bool IsPointerOver(Control control)
-        {
-            return control.RectangleToScreen(control.ClientRectangle).Contains(Cursor.Position);
+            _settingsAccessMessage = message;
+            _trayMenuController?.SetActiveSection(TrayMenuSection.Settings, triggerStateChanged: true);
         }
 
         private static void ConfigureQuickPanelButton(Button button, Color backColor, Color foreColor)
@@ -984,41 +977,45 @@ namespace TrayApp
             _quickPanelCredentialEntryEditorPanel.Size = new Size(547, 414);
             _quickPanelCredentialEntryEditorPanel.BackColor = Color.Transparent;
 
-            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialLabelEditorLabel, "Label", new Point(0, 0));
-            ConfigureCredentialWorkspaceTextBox(_quickPanelCredentialLabelTextBox, new Point(0, 20), new Size(257, 25), multiline: false);
+            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialEditorModeLabel, "Read / Edit / Delete mode", new Point(0, 0));
+            _quickPanelCredentialEditorModeLabel.ForeColor = Color.FromArgb(120, 205, 0);
+            _quickPanelCredentialEditorModeLabel.Visible = false;
+
+            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialLabelEditorLabel, "Label", new Point(0, 20));
+            ConfigureCredentialWorkspaceTextBox(_quickPanelCredentialLabelTextBox, new Point(0, 40), new Size(257, 25), multiline: false);
             _quickPanelCredentialLabelTextBox.TextChanged += credentialEditorInput_TextChanged;
 
-            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialAssignedGroupLabel, "Assigned group", new Point(272, 0));
-            ConfigureCredentialWorkspaceComboBox(_quickPanelCredentialAssignedGroupComboBox, new Point(272, 20), new Size(275, 25));
+            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialAssignedGroupLabel, "Assigned group", new Point(272, 20));
+            ConfigureCredentialWorkspaceComboBox(_quickPanelCredentialAssignedGroupComboBox, new Point(272, 40), new Size(275, 25));
             _quickPanelCredentialAssignedGroupComboBox.SelectedIndexChanged += credentialEditorInput_Changed;
 
-            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialDomainLabel, "Domain", new Point(0, 58));
-            ConfigureCredentialWorkspaceTextBox(_quickPanelCredentialDomainTextBox, new Point(0, 78), new Size(166, 25), multiline: false);
+            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialDomainLabel, "Domain", new Point(0, 78));
+            ConfigureCredentialWorkspaceTextBox(_quickPanelCredentialDomainTextBox, new Point(0, 98), new Size(166, 25), multiline: false);
             _quickPanelCredentialDomainTextBox.TextChanged += credentialEditorInput_TextChanged;
 
-            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialUsernameLabel, "Username", new Point(178, 58));
-            ConfigureCredentialWorkspaceTextBox(_quickPanelCredentialUsernameTextBox, new Point(178, 78), new Size(166, 25), multiline: false);
+            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialUsernameLabel, "Username", new Point(178, 78));
+            ConfigureCredentialWorkspaceTextBox(_quickPanelCredentialUsernameTextBox, new Point(178, 98), new Size(166, 25), multiline: false);
             _quickPanelCredentialUsernameTextBox.TextChanged += credentialEditorInput_TextChanged;
-            ConfigureCredentialWorkspaceIconButton(_quickPanelCredentialUsernameCopyButton, "⧉", new Point(250, 55), quickPanelCredentialUsernameCopyButton_Click);
+            ConfigureCredentialWorkspaceIconButton(_quickPanelCredentialUsernameCopyButton, "⧉", new Point(250, 75), quickPanelCredentialUsernameCopyButton_Click);
 
-            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialPasswordLabel, "Password", new Point(356, 58));
-            ConfigureCredentialWorkspaceTextBox(_quickPanelCredentialPasswordTextBox, new Point(356, 78), new Size(191, 25), multiline: false);
+            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialPasswordLabel, "Password", new Point(356, 78));
+            ConfigureCredentialWorkspaceTextBox(_quickPanelCredentialPasswordTextBox, new Point(356, 98), new Size(191, 25), multiline: false);
             _quickPanelCredentialPasswordTextBox.UseSystemPasswordChar = true;
             _quickPanelCredentialPasswordTextBox.TextChanged += credentialEditorInput_TextChanged;
-            ConfigureCredentialWorkspaceIconButton(_quickPanelCredentialPasswordGenerateButton, "↻", new Point(425, 55), quickPanelCredentialPasswordGenerateButton_Click);
-            ConfigureCredentialWorkspaceIconButton(_quickPanelCredentialPasswordRevealButton, "👁", new Point(501, 55), quickPanelCredentialPasswordRevealButton_Click);
-            ConfigureCredentialWorkspaceIconButton(_quickPanelCredentialPasswordCopyButton, "⧉", new Point(525, 55), quickPanelCredentialPasswordCopyButton_Click);
+            ConfigureCredentialWorkspaceIconButton(_quickPanelCredentialPasswordGenerateButton, "↻", new Point(425, 75), quickPanelCredentialPasswordGenerateButton_Click);
+            ConfigureCredentialWorkspaceIconButton(_quickPanelCredentialPasswordRevealButton, "👁", new Point(501, 75), quickPanelCredentialPasswordRevealButton_Click);
+            ConfigureCredentialWorkspaceIconButton(_quickPanelCredentialPasswordCopyButton, "⧉", new Point(525, 75), quickPanelCredentialPasswordCopyButton_Click);
 
-            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialDescriptionLabel, "Description", new Point(0, 120));
-            ConfigureCredentialWorkspaceTextBox(_quickPanelCredentialDescriptionTextBox, new Point(0, 140), new Size(547, 135), multiline: true);
+            ConfigureCredentialWorkspaceLabel(_quickPanelCredentialDescriptionLabel, "Description", new Point(0, 140));
+            ConfigureCredentialWorkspaceTextBox(_quickPanelCredentialDescriptionTextBox, new Point(0, 160), new Size(547, 135), multiline: true);
             _quickPanelCredentialDescriptionTextBox.TextChanged += credentialEditorInput_TextChanged;
-            ConfigureCredentialWorkspaceIconButton(_quickPanelCredentialDescriptionCopyButton, "⧉", new Point(88, 117), quickPanelCredentialDescriptionCopyButton_Click);
+            ConfigureCredentialWorkspaceIconButton(_quickPanelCredentialDescriptionCopyButton, "⧉", new Point(88, 137), quickPanelCredentialDescriptionCopyButton_Click);
 
-            ConfigureCredentialWorkspaceButton(_quickPanelCredentialDeleteButton, "Delete entry", new Point(0, 291), quickPanelCredentialDeleteButton_Click);
+            ConfigureCredentialWorkspaceButton(_quickPanelCredentialDeleteButton, "Delete entry", new Point(0, 311), quickPanelCredentialDeleteButton_Click);
             _quickPanelCredentialDeleteButton.BackColor = Color.FromArgb(214, 88, 88);
             _quickPanelCredentialDeleteButton.ForeColor = Color.White;
 
-            ConfigureCredentialWorkspaceButton(_quickPanelCredentialSaveButton, "Save changes", new Point(112, 291), quickPanelCredentialSaveButton_Click);
+            ConfigureCredentialWorkspaceButton(_quickPanelCredentialSaveButton, "Save changes", new Point(112, 311), quickPanelCredentialSaveButton_Click);
             _quickPanelCredentialSaveButton.BackColor = Color.FromArgb(120, 205, 0);
             _quickPanelCredentialSaveButton.ForeColor = Color.Black;
             _quickPanelCredentialSaveButton.FlatAppearance.BorderSize = 1;
@@ -1027,9 +1024,10 @@ namespace TrayApp
             _quickPanelCredentialStatusLabel.AutoSize = false;
             _quickPanelCredentialStatusLabel.Font = new Font("Segoe UI", 8.75F);
             _quickPanelCredentialStatusLabel.ForeColor = Color.FromArgb(171, 174, 211);
-            _quickPanelCredentialStatusLabel.Location = new Point(0, 331);
+            _quickPanelCredentialStatusLabel.Location = new Point(0, 351);
             _quickPanelCredentialStatusLabel.Size = new Size(547, 32);
 
+            _quickPanelCredentialEntryEditorPanel.Controls.Add(_quickPanelCredentialEditorModeLabel);
             _quickPanelCredentialEntryEditorPanel.Controls.Add(_quickPanelCredentialLabelEditorLabel);
             _quickPanelCredentialEntryEditorPanel.Controls.Add(_quickPanelCredentialLabelTextBox);
             _quickPanelCredentialEntryEditorPanel.Controls.Add(_quickPanelCredentialAssignedGroupLabel);
@@ -1401,6 +1399,8 @@ namespace TrayApp
             _quickPanelResizeGrip.Location = new Point(
                 _quickPanelContainer.Width - _quickPanelResizeGrip.Width,
                 _quickPanelHeight - _quickPanelResizeGrip.Height);
+            LayoutCredentialEntryEditor();
+            LayoutSettingsOverview();
 
             if (_quickPanelHost != null)
             {
@@ -1413,6 +1413,53 @@ namespace TrayApp
                 _lastTrayMenuScreenPoint = ClampQuickPanelScreenPoint(contextMenuStrip1.Location);
                 contextMenuStrip1.Location = _lastTrayMenuScreenPoint;
             }
+        }
+
+        private void LayoutCredentialEntryEditor()
+        {
+            const int bottomMargin = 15;
+            const int actionToStatusGap = 12;
+            const int descriptionToActionGap = 16;
+
+            int workspaceHeight = Math.Max(
+                414,
+                _quickPanelDetailPanel.Height - _quickPanelCredentialWorkspacePanel.Top - bottomMargin);
+            _quickPanelCredentialWorkspacePanel.Height = workspaceHeight;
+            _quickPanelCredentialEntryEditorPanel.Height = workspaceHeight - _quickPanelCredentialEntryEditorPanel.Top;
+
+            _quickPanelCredentialStatusLabel.Top = _quickPanelCredentialEntryEditorPanel.Height -
+                _quickPanelCredentialStatusLabel.Height - bottomMargin;
+            int actionTop = _quickPanelCredentialStatusLabel.Top -
+                _quickPanelCredentialSaveButton.Height - actionToStatusGap;
+            _quickPanelCredentialSaveButton.Top = actionTop;
+            _quickPanelCredentialDeleteButton.Top = actionTop;
+            if (_quickPanelCredentialEntryEditorPanel.Visible)
+            {
+                _quickPanelCredentialBackButton.Location = new Point(
+                    _quickPanelCredentialEntryEditorPanel.Left + _quickPanelCredentialSaveButton.Right + 8,
+                    _quickPanelCredentialEntryEditorPanel.Top + actionTop);
+            }
+
+            _quickPanelCredentialDescriptionTextBox.Height = Math.Max(
+                80,
+                actionTop - _quickPanelCredentialDescriptionTextBox.Top - descriptionToActionGap);
+        }
+
+        private void LayoutSettingsOverview()
+        {
+            const int bottomMargin = 15;
+            if (_trayMenuController?.ActiveSection != TrayMenuSection.Settings)
+            {
+                _quickPanelSettingsOverviewPanel.Height = _quickPanelSettingsNavigationPanel.Height;
+                return;
+            }
+
+            int overviewHeight = Math.Max(
+                220,
+                _quickPanelDetailPanel.Height - _quickPanelSettingsOverviewPanel.Top - bottomMargin);
+
+            _quickPanelSettingsOverviewPanel.Height = overviewHeight;
+            _quickPanelSettingsDescriptionBox.Height = overviewHeight - _quickPanelSettingsDescriptionBox.Top;
         }
 
         private void SetRegistrationControlsVisible(bool visible)
@@ -1479,6 +1526,13 @@ namespace TrayApp
                 return;
             }
 
+            if (_trayMenuController?.ActiveSection == TrayMenuSection.Credentials)
+            {
+                PopulateCredentialSelectors();
+                return;
+            }
+
+            _credentialSelectorsFingerprint = string.Empty;
             _updatingQuickPanelSelections = true;
 
             try
@@ -1597,7 +1651,6 @@ namespace TrayApp
             _quickPanelSummaryLabel.Text = BuildQuickPanelSummary(state.StatusText, state.ActiveNamespace);
             _quickPanelProfileLabel.Text = $"Profile: {state.Registration?.DisplayUserName ?? "Not registered"}";
             RefreshQuickPanelServerStatusList(state.Registration);
-            LayoutQuickPanelMenuSections();
 
             _quickPanelAccountValueLabel.Text = state.Registration?.DisplayUserName ?? "Not registered";
             _quickPanelDeviceValueLabel.Text = state.Registration?.DeviceId ?? "Waiting for pairing";
@@ -1614,11 +1667,25 @@ namespace TrayApp
 
         private void ApplyQuickPanelSectionAvailability()
         {
+            bool hasAuthenticatedUser = _authenticationService.IsAuthorized;
             bool credentialsSectionEnabled = _authenticationService.IsAuthorizedForActiveNamespace;
+
+            _quickPanelCredentialsNavButton.Visible = credentialsSectionEnabled;
+            _quickPanelSettingsNavButton.Visible = _isDeviceRegistered;
 
             if (!credentialsSectionEnabled && _trayMenuController?.ActiveSection == TrayMenuSection.Credentials)
             {
                 _trayMenuController.SetActiveSection(TrayMenuSection.Login);
+            }
+
+            if (!hasAuthenticatedUser && _trayMenuController?.ActiveSection is
+                TrayMenuSection.SettingsServers or
+                TrayMenuSection.Devices or
+                TrayMenuSection.Accounts or
+                TrayMenuSection.Servers)
+            {
+                _settingsAccessMessage = "Log in to access Servers, Devices, and Account settings.";
+                _trayMenuController.SetActiveSection(TrayMenuSection.Settings);
             }
 
             _quickPanelCredentialsNavButton.Enabled = credentialsSectionEnabled;
@@ -1629,9 +1696,10 @@ namespace TrayApp
                 return;
             }
 
-            SetQuickPanelLoginNavigationEnabled(!_authenticationService.IsLoginNavigationDisabled);
+            SetQuickPanelLoginNavigationEnabled(true);
             UpdateQuickPanelNavigationButtonState(_quickPanelLoginNavButton, _trayMenuController.ActiveSection == TrayMenuSection.Login);
             bool settingsSectionActive = (_trayMenuController.ActiveSection is
+                TrayMenuSection.Settings or
                 TrayMenuSection.SettingsUsers or
                 TrayMenuSection.SettingsServers or
                 TrayMenuSection.Devices or
@@ -1640,6 +1708,7 @@ namespace TrayApp
             UpdateQuickPanelNavigationButtonState(_quickPanelSettingsNavButton, settingsSectionActive);
             UpdateQuickPanelNavigationButtonState(_quickPanelCredentialsNavButton, _trayMenuController.ActiveSection == TrayMenuSection.Credentials);
             UpdateQuickPanelNavigationButtonState(_quickPanelFaqNavButton, _trayMenuController.ActiveSection == TrayMenuSection.Faq);
+            LayoutQuickPanelMenuSections();
         }
 
         private void SetQuickPanelLoginNavigationEnabled(bool enabled)
@@ -1955,6 +2024,84 @@ namespace TrayApp
             UpdateAccountsPresentation();
             UpdateDevicesPresentation();
             UpdateFaqPresentation();
+            UpdateSettingsOverviewPresentation(viewState);
+        }
+
+        private void UpdateSettingsOverviewPresentation(TrayMenuViewState viewState)
+        {
+            TrayMenuSection? activeSection = _trayMenuController?.ActiveSection;
+            bool settingsNavigationActive = activeSection is
+                TrayMenuSection.Settings or
+                TrayMenuSection.SettingsUsers or
+                TrayMenuSection.SettingsServers or
+                TrayMenuSection.Devices or
+                TrayMenuSection.Accounts;
+            bool settingsOverviewActive = activeSection == TrayMenuSection.Settings;
+
+            _quickPanelSettingsOverviewPanel.Visible = settingsNavigationActive;
+            _quickPanelSettingsDescriptionBox.Visible = settingsOverviewActive;
+            _quickPanelDetailDescriptionLabel.Visible = !settingsOverviewActive;
+
+            if (!settingsNavigationActive)
+            {
+                return;
+            }
+
+            UpdateSettingsOverviewLinkState(_quickPanelSettingsOverviewLink, TrayMenuSection.Settings);
+            UpdateSettingsOverviewLinkState(_quickPanelSettingsProfileLink, TrayMenuSection.SettingsUsers);
+            UpdateSettingsOverviewLinkState(_quickPanelSettingsServersLink, TrayMenuSection.SettingsServers);
+            UpdateSettingsOverviewLinkState(_quickPanelSettingsDevicesLink, TrayMenuSection.Devices);
+            UpdateSettingsOverviewLinkState(_quickPanelSettingsAccountLink, TrayMenuSection.Accounts);
+
+            if (settingsOverviewActive)
+            {
+                _quickPanelSelectionCard.Visible = false;
+                _quickPanelMetricsCard.Visible = false;
+                _quickPanelInsightCard.Visible = false;
+                _quickPanelSettingsDescriptionBox.Text =
+                    (string.IsNullOrWhiteSpace(_settingsAccessMessage)
+                        ? string.Empty
+                        : _settingsAccessMessage + "\n\n") +
+                    $"{viewState.Description}\n\n" +
+                    "Overview provides a summary of the available settings.\n\n" +
+                    "Profile: manage the active profile and related actions.\n\n" +
+                    "Servers: add, synchronize, and manage server connections.\n\n" +
+                    "Devices: review and manage registered account devices.\n\n" +
+                    "Account: review the account connections configured for the active profile.";
+            }
+            else if (activeSection is TrayMenuSection.SettingsUsers or TrayMenuSection.SettingsServers)
+            {
+                _quickPanelSelectionCard.Location = new Point(32, 190);
+            }
+            else if (activeSection == TrayMenuSection.Accounts)
+            {
+                ApplyGuidanceListLayout(_quickPanelAccountsGuidancePanel, _quickPanelAccountsPanel);
+            }
+            else if (activeSection == TrayMenuSection.Devices)
+            {
+                ApplyGuidanceListLayout(_quickPanelDevicesGuidancePanel, _quickPanelDevicesPanel);
+            }
+
+            LayoutSettingsOverview();
+            _quickPanelSettingsOverviewPanel.BringToFront();
+        }
+
+        private void ApplyGuidanceListLayout(Panel guidancePanel, FlowLayoutPanel listPanel)
+        {
+            guidancePanel.Location = new Point(QuickPanelGuidanceLeft, QuickPanelGuidanceTop);
+            listPanel.Location = new Point(QuickPanelGuidanceLeft, QuickPanelGuidanceListTop);
+            listPanel.Height = _quickPanelDetailPanel.Height - listPanel.Top - QuickPanelContentBottomMargin;
+        }
+
+        private void UpdateSettingsOverviewLinkState(Label label, TrayMenuSection section)
+        {
+            bool available = !RequiresSettingsAuthentication(section) || _authenticationService.IsAuthorized;
+            label.ForeColor = !available
+                ? Color.FromArgb(119, 122, 151)
+                : _trayMenuController?.ActiveSection == section
+                    ? Color.FromArgb(120, 205, 0)
+                    : Color.White;
+            label.Cursor = available ? Cursors.Hand : Cursors.Default;
         }
 
         private void ApplyLoginProfileSelectionAvailability(TrayMenuViewState viewState)
@@ -1974,6 +2121,7 @@ namespace TrayApp
         {
             bool accountsActive = _trayMenuController?.ActiveSection == TrayMenuSection.Accounts;
             ConfigureAccountsPresentationLayout(accountsActive);
+            _quickPanelAccountsGuidancePanel.Visible = accountsActive;
 
             if (!accountsActive)
             {
@@ -2004,6 +2152,30 @@ namespace TrayApp
             _quickPanelSelectionCard.Visible = false;
             _quickPanelMetricsCard.Visible = false;
             _quickPanelInsightCard.Visible = false;
+        }
+
+        private void ConfigureAccountsGuidanceBox()
+        {
+            _quickPanelAccountsGuidancePanel.BackColor = Color.FromArgb(31, 33, 57);
+            _quickPanelAccountsGuidancePanel.BorderStyle = BorderStyle.FixedSingle;
+            _quickPanelAccountsGuidancePanel.Location = new Point(32, 152);
+            _quickPanelAccountsGuidancePanel.Size = new Size(578, 174);
+            _quickPanelAccountsGuidancePanel.Visible = false;
+
+            _quickPanelAccountsGuidanceBox.BackColor = _quickPanelAccountsGuidancePanel.BackColor;
+            _quickPanelAccountsGuidanceBox.BorderStyle = BorderStyle.None;
+            _quickPanelAccountsGuidanceBox.Cursor = Cursors.Default;
+            _quickPanelAccountsGuidanceBox.DetectUrls = false;
+            _quickPanelAccountsGuidanceBox.Font = _quickPanelDevicesGuidanceFont;
+            _quickPanelAccountsGuidanceBox.ForeColor = Color.FromArgb(220, 222, 241);
+            _quickPanelAccountsGuidanceBox.Location = new Point(8, 8);
+            _quickPanelAccountsGuidanceBox.ReadOnly = true;
+            _quickPanelAccountsGuidanceBox.ScrollBars = RichTextBoxScrollBars.None;
+            _quickPanelAccountsGuidanceBox.ShortcutsEnabled = false;
+            _quickPanelAccountsGuidanceBox.Size = new Size(560, 156);
+            _quickPanelAccountsGuidanceBox.TabStop = false;
+            _quickPanelAccountsGuidanceBox.Text = "Deleting an account completely deregisters all registered devices, credentials, and recovery data, including email addresses and phone numbers. All user-related information is permanently deleted and cannot be recovered.";
+            _quickPanelAccountsGuidancePanel.Controls.Add(_quickPanelAccountsGuidanceBox);
         }
 
         private void PopulateAccountRows()
@@ -2069,9 +2241,8 @@ namespace TrayApp
             _quickPanelDetailTitleLabel.Font = _quickPanelDevicesTitleFont;
             _quickPanelDetailTitleLabel.Size = new Size(550, 40);
             _quickPanelDetailDescriptionLabel.Size = new Size(574, 44);
+            ApplyGuidanceListLayout(_quickPanelDevicesGuidancePanel, _quickPanelDevicesPanel);
             _quickPanelDevicesGuidancePanel.BringToFront();
-            _quickPanelDevicesPanel.Location = new Point(32, 338);
-            _quickPanelDevicesPanel.Size = new Size(578, 307);
             _quickPanelSelectionCard.Visible = false;
             _quickPanelMetricsCard.Visible = false;
             _quickPanelInsightCard.Visible = false;
@@ -2349,16 +2520,29 @@ namespace TrayApp
         private void RemoveDeletedSigningDeviceRegistration()
         {
             string? activeUserId = AppEnvironment.GetActiveUserId();
+            var configStore = new RegistrationConfigStore();
             if (string.IsNullOrWhiteSpace(activeUserId) ||
-                !new RegistrationConfigStore().RemoveRegistration(activeUserId))
+                !configStore.RemoveRegistration(activeUserId))
             {
                 throw new InvalidOperationException("The deleted device could not be removed from local configuration.");
             }
 
+            bool noProfilesRemain = !configStore.TryReadRegistrations(out List<DesktopRegistration>? registrations) ||
+                registrations is not { Count: > 0 };
             _authenticationService.RevokeAuthorization();
             _extensionSessionStateStore.MarkInvalid("device_deleted");
             AppEnvironment.ClearActiveSelection();
             _isDeviceRegistered = false;
+
+            if (noProfilesRemain)
+            {
+                MessageBox.Show(
+                    "The current profile was removed because it no longer has a registered server.",
+                    "Profile removed",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+
             CloseQuickPanel();
             UpdateAuthenticationMenuItems();
         }
@@ -2888,6 +3072,12 @@ namespace TrayApp
                     _lastTrayMessage = "Desktop attestation is active.";
                     _lastTrayMessageIcon = ToolTipIcon.Info;
                 }
+                else if (result.DeviceRemoved)
+                {
+                    _extensionSessionStateStore.MarkInvalid(AuthenticationService.DeviceRemovedReason);
+                    _lastTrayMessage = AuthenticationService.DeviceRemovedMessage;
+                    _lastTrayMessageIcon = ToolTipIcon.Warning;
+                }
                 else if (result.ExplicitlyInvalid)
                 {
                     _authenticationService.RevokeAuthorizationForActiveNamespace();
@@ -2939,6 +3129,7 @@ namespace TrayApp
                 bool showEntryEditor = showCreateEntry ||
                     (!showGroupManager && !string.IsNullOrWhiteSpace(_selectedCredentialEntryId));
                 bool canDeleteCredential = !showGroupManager && !showCreateEntry && GetSelectedCredentialEntry() != null;
+                bool showCredentialReadEditDeleteMode = canDeleteCredential;
                 bool showCredentialDeletionConfirmation = canDeleteCredential &&
                     IsDeletionConfirmationPending(CredentialDeletionConfirmation.Credential);
                 bool canDeleteGroup = showGroupManager && !showCreateGroup && _credentialGroups.Any(group =>
@@ -2950,29 +3141,34 @@ namespace TrayApp
                 {
                     CredentialWorkspaceMode.ManageGroup => "Groups - Edit",
                     CredentialWorkspaceMode.CreateGroup => "Groups - Create",
-                    _ => "Credentials"
+                    CredentialWorkspaceMode.CreateEntry => "Credentials - Create",
+                    _ => showCredentialReadEditDeleteMode
+                        ? "Credentials - Read / Edit / Delete"
+                        : "Credentials"
                 };
                 _quickPanelDetailDescriptionLabel.Text = _credentialWorkspaceMode switch
                 {
                     CredentialWorkspaceMode.ManageGroup => "Select a credential group to edit its name.",
                     CredentialWorkspaceMode.CreateGroup => "Create a credential group for the active server.",
+                    CredentialWorkspaceMode.CreateEntry => "Create a credential for the active server.",
                     _ => _quickPanelDetailDescriptionLabel.Text
                 };
-                ApplyCredentialSelectionCardMode(showGroupManager, showCreateGroup);
+                ApplyCredentialSelectionCardMode(showGroupManager, showCreateGroup, showCreateEntry);
                 _quickPanelCredentialEntryEditorPanel.Visible = showEntryEditor;
                 _quickPanelCredentialGroupEditorPanel.Visible = showGroupManager;
                 _quickPanelCredentialBackButton.Visible = (showGroupManager || showEntryEditor) &&
                     !showCredentialDeletionConfirmation && !showGroupDeletionConfirmation;
-                _quickPanelCredentialSaveButton.Location = new Point(showCredentialDeletionConfirmation ? 0 : canDeleteCredential ? 112 : 0, 291);
-                _quickPanelCredentialDeleteButton.Location = new Point(showCredentialDeletionConfirmation ? 112 : 0, 291);
-                _quickPanelCredentialGroupSaveButton.Location = new Point(showGroupDeletionConfirmation ? 0 : 158, 122);
+                _quickPanelCredentialSaveButton.Left = showCredentialDeletionConfirmation ? 0 : canDeleteCredential ? 112 : 0;
+                _quickPanelCredentialDeleteButton.Left = showCredentialDeletionConfirmation ? 112 : 0;
+                _quickPanelCredentialGroupSaveButton.Location = new Point(
+                    showGroupDeletionConfirmation || showCreateGroup ? 0 : 158,
+                    122);
                 _quickPanelCredentialGroupDeleteButton.Location = new Point(showGroupDeletionConfirmation ? 112 : 0, 122);
+                LayoutCredentialEntryEditor();
                 _quickPanelCredentialBackButton.Location = showGroupManager
-                    ? showCreateGroup
-                        ? new Point(144, 134)
-                        : new Point(
-                            _quickPanelCredentialGroupEditorPanel.Left + _quickPanelCredentialGroupSaveButton.Right + 8,
-                            _quickPanelCredentialGroupEditorPanel.Top + _quickPanelCredentialGroupSaveButton.Top)
+                    ? new Point(
+                        _quickPanelCredentialGroupEditorPanel.Left + _quickPanelCredentialGroupSaveButton.Right + 8,
+                        _quickPanelCredentialGroupEditorPanel.Top + _quickPanelCredentialGroupSaveButton.Top)
                     : new Point(
                         _quickPanelCredentialEntryEditorPanel.Left + _quickPanelCredentialSaveButton.Right + 8,
                         _quickPanelCredentialEntryEditorPanel.Top + _quickPanelCredentialSaveButton.Top);
@@ -3001,6 +3197,10 @@ namespace TrayApp
                 _quickPanelCredentialDeleteButton.Visible = canDeleteCredential;
                 _quickPanelCredentialDeleteButton.Enabled = canDeleteCredential && !_credentialsLoading;
                 _quickPanelCredentialDeleteButton.Text = showCredentialDeletionConfirmation ? "Delete" : "Delete entry";
+                _quickPanelCredentialEditorModeLabel.Text = showCreateEntry
+                    ? "Create credential mode"
+                    : "Read / Edit / Delete mode";
+                _quickPanelCredentialEditorModeLabel.Visible = showCreateEntry || showCredentialReadEditDeleteMode;
 
                 _quickPanelManagedGroupLabel.Visible = !showCreateGroup;
                 _quickPanelManagedGroupComboBox.Visible = !showCreateGroup;
@@ -3036,7 +3236,7 @@ namespace TrayApp
             }
         }
 
-        private void ApplyCredentialSelectionCardMode(bool showGroupManager, bool showCreateGroup)
+        private void ApplyCredentialSelectionCardMode(bool showGroupManager, bool showCreateGroup, bool showCreateEntry)
         {
             if (_trayMenuController?.ActiveSection != TrayMenuSection.Credentials)
             {
@@ -3045,24 +3245,25 @@ namespace TrayApp
 
             if (!showGroupManager)
             {
-                _quickPanelSelectionCard.Visible = true;
-                _quickPanelCredentialWorkspacePanel.Location = new Point(32, 226);
+                bool showSelectorCard = !showCreateEntry;
+                _quickPanelSelectionCard.Visible = showSelectorCard;
+                _quickPanelCredentialWorkspacePanel.Location = new Point(32, showSelectorCard ? 226 : 137);
                 MoveCredentialGroupActionButton(_quickPanelSelectionCard);
-                _quickPanelUserLabel.Visible = true;
-                _quickPanelUserComboBox.Visible = true;
+                _quickPanelUserLabel.Visible = showSelectorCard;
+                _quickPanelUserComboBox.Visible = showSelectorCard;
                 _quickPanelUserComboBox.Location = new Point(16, 36);
                 _quickPanelUserComboBox.Size = new Size(244, 25);
-                _quickPanelCredentialGroupSettingsButton.Visible = true;
+                _quickPanelCredentialGroupSettingsButton.Visible = showSelectorCard;
                 _quickPanelCredentialGroupSettingsButton.Location = new Point(130, 10);
                 _quickPanelCredentialGroupSettingsButton.Text = "⚙ Manage groups";
                 _quickPanelCredentialGroupSettingsButton.BackColor = Color.FromArgb(46, 48, 77);
                 _quickPanelCredentialGroupSettingsButton.ForeColor = Color.FromArgb(120, 205, 0);
-                _quickPanelNamespaceLabel.Visible = true;
-                _quickPanelNamespaceComboBox.Visible = true;
+                _quickPanelNamespaceLabel.Visible = showSelectorCard;
+                _quickPanelNamespaceComboBox.Visible = showSelectorCard;
                 _quickPanelNamespaceLabel.Location = new Point(308, 14);
                 _quickPanelNamespaceComboBox.Location = new Point(308, 36);
                 _quickPanelNamespaceComboBox.Size = new Size(216, 25);
-                _quickPanelCredentialEntryCreateIconButton.Visible = true;
+                _quickPanelCredentialEntryCreateIconButton.Visible = showSelectorCard;
                 _quickPanelCredentialEntryCreateIconButton.Location = new Point(374, 10);
                 _quickPanelCredentialEntryCreateIconButton.Text = "+ Create new entry";
                 _quickPanelCredentialEntryCreateIconButton.BackColor = Color.FromArgb(46, 48, 77);

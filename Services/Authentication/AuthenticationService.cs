@@ -17,6 +17,13 @@ namespace TrayApp.Services
         private readonly Action<string?, ToolTipIcon>? _authorizationNotificationChanged;
         private readonly Action<string>? _log;
         private readonly SemaphoreSlim _authenticationLock = new(1, 1);
+        private readonly object _deviceRemovalLock = new();
+
+        public const string DeviceRemovedReason = "device_removed";
+        public const string DeviceRemovedMessage =
+            "This device was removed from the account by the account owner on their mobile phone. You have been signed out.";
+
+        public event Action? DeviceRegistrationRemoved;
 
         public AuthenticationService(
             RegisteredDeviceService registeredDeviceService,
@@ -33,6 +40,8 @@ namespace TrayApp.Services
         }
 
         public bool IsAuthorized => _authorizationSessionStore.IsAuthorized;
+
+        public bool HasActiveRegistration => _registeredDeviceService.TryReadRegistration(out _);
 
         public bool HasAuthorizedOtherProfile => _authorizationSessionStore.HasActiveSessionForAnotherUser(
             AppEnvironment.GetActiveUserId());
@@ -155,6 +164,7 @@ namespace TrayApp.Services
             AuthorizationContext activeNamespaceContext = CreateActiveNamespaceAuthorizationContext();
             IReadOnlyList<AuthorizationContext> knownContexts = CreateAuthorizationContexts();
             bool anyActiveSession = false;
+            bool anyDeviceRemoved = false;
             AuthorizationHealthResult? activeNamespaceHealth = null;
             string? transientReason = null;
 
@@ -176,6 +186,7 @@ namespace TrayApp.Services
                 }
                 else if (health.ExplicitlyInvalid)
                 {
+                    anyDeviceRemoved |= health.DeviceRemoved;
                     RevokeAuthorization(context);
                 }
                 else if (health.TransientFailure && string.IsNullOrWhiteSpace(transientReason))
@@ -187,6 +198,11 @@ namespace TrayApp.Services
                 {
                     activeNamespaceHealth = health;
                 }
+            }
+
+            if (anyDeviceRemoved && !HasActiveRegistration)
+            {
+                return AuthorizationHealthResult.Removed(DeviceRemovedReason);
             }
 
             if (activeNamespaceHealth == null)
@@ -208,6 +224,11 @@ namespace TrayApp.Services
                 {
                     transientReason = activeNamespaceHealth.Reason;
                 }
+            }
+
+            if (activeNamespaceHealth.DeviceRemoved)
+            {
+                return activeNamespaceHealth;
             }
 
             if (anyActiveSession)
@@ -240,8 +261,15 @@ namespace TrayApp.Services
 
         public void RevokeAuthorizationForActiveNamespace()
         {
-            AuthorizationContext context = CreateActiveNamespaceAuthorizationContext();
-            RevokeAuthorization(context);
+            try
+            {
+                AuthorizationContext context = CreateActiveNamespaceAuthorizationContext();
+                RevokeAuthorization(context);
+            }
+            catch (InvalidDataException)
+            {
+                RevokeAuthorization();
+            }
         }
 
         public async Task<bool> LogoutAsync()
@@ -349,6 +377,11 @@ namespace TrayApp.Services
 
                 return await ResolveAuthorizationResponseAsync(response, context).ConfigureAwait(false);
             }
+            catch (ApiRequestException ex) when (IsDeviceNotRegistered(ex))
+            {
+                RemoveDeviceRegistration(context.DesktopDeviceId, context.BaseUrl);
+                return false;
+            }
             catch (Exception ex)
             {
                 _log?.Invoke($"[AUTH] Request failed: {ex.Message}");
@@ -358,6 +391,100 @@ namespace TrayApp.Services
             {
                 _authorizationNotificationChanged?.Invoke(null, ToolTipIcon.None);
             }
+        }
+
+        /// <summary>
+        /// Handles the backend "device not found for signature verification" error for requests signed by
+        /// <paramref name="desktopDeviceId"/>. Returns true when the error was a device removal.
+        /// </summary>
+        public bool TryHandleDeviceRemoved(Exception exception, string desktopDeviceId)
+        {
+            if (exception is not ApiRequestException apiException || !IsDeviceNotRegistered(apiException))
+            {
+                return false;
+            }
+
+            RemoveDeviceRegistration(desktopDeviceId, ResolveBaseUrl(apiException.Endpoint));
+            return true;
+        }
+
+        private void RemoveDeviceRegistration(string desktopDeviceId, string? baseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(desktopDeviceId))
+            {
+                return;
+            }
+
+            var removedContexts = new List<AuthorizationContext>();
+
+            lock (_deviceRemovalLock)
+            {
+                if (!_registeredDeviceService.TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? registrations) ||
+                    registrations == null)
+                {
+                    return;
+                }
+
+                string? normalizedBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? null : baseUrl.TrimEnd('/');
+                removedContexts.AddRange(registrations
+                    .SelectMany(registration => registration.Namespaces
+                        .Select(namespaceItem => CreateAuthorizationContext(registration, namespaceItem, string.Empty)))
+                    .Where(context =>
+                        string.Equals(context.DesktopDeviceId, desktopDeviceId, StringComparison.Ordinal) &&
+                        (normalizedBaseUrl == null ||
+                         string.Equals(context.BaseUrl, normalizedBaseUrl, StringComparison.OrdinalIgnoreCase))));
+
+                string? activeUserId = AppEnvironment.GetActiveUserId();
+                foreach (AuthorizationContext context in removedContexts)
+                {
+                    try
+                    {
+                        _registeredDeviceService.RemoveNamespace(context.UserId, context.NamespaceId);
+                    }
+                    catch (InvalidDataException ex)
+                    {
+                        _log?.Invoke($"[AUTH] Removed device namespace cleanup failed. namespaceId='{context.NamespaceId}': {ex.Message}");
+                    }
+
+                    RevokeAuthorization(context);
+                    _log?.Invoke($"[AUTH] Removed device '{desktopDeviceId}' namespace '{context.NamespaceId}' from profile '{context.UserId}'.");
+                }
+
+                if (removedContexts.Count == 0)
+                {
+                    return;
+                }
+
+                if (removedContexts.Any(context => string.Equals(context.UserId, activeUserId, StringComparison.Ordinal)))
+                {
+                    if (_registeredDeviceService.TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? remaining) &&
+                        remaining != null &&
+                        remaining.Any(registration => string.Equals(registration.UserKey, activeUserId, StringComparison.Ordinal)))
+                    {
+                        AppEnvironment.SetActiveUser(activeUserId!);
+                    }
+                    else
+                    {
+                        AppEnvironment.ClearActiveSelection();
+                    }
+                }
+            }
+
+            NotifyAuthorizationStatus(DeviceRemovedMessage, ToolTipIcon.Warning);
+            DeviceRegistrationRemoved?.Invoke();
+        }
+
+        private static string? ResolveBaseUrl(string endpoint)
+        {
+            int versionIndex = endpoint.IndexOf(ApiRoutes.VersionPrefix + "/", StringComparison.OrdinalIgnoreCase);
+            return versionIndex > 0 ? endpoint[..versionIndex] : null;
+        }
+
+        private static bool IsDeviceNotRegistered(ApiRequestException exception)
+        {
+            return exception.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
+                (exception.ResponseBody.Contains("Device not found for signature verification", StringComparison.OrdinalIgnoreCase) ||
+                 exception.ResponseBody.Contains("e_40101_2", StringComparison.OrdinalIgnoreCase));
         }
 
         private async Task<bool> ResolveAuthorizationResponseAsync(AuthenticationResponseDto? response, AuthorizationContext context)
@@ -585,7 +712,14 @@ namespace TrayApp.Services
 
                 return true;
             }
-            catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden || ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            catch (ApiRequestException ex) when (IsDeviceNotRegistered(ex))
+            {
+                RemoveDeviceRegistration(context.DesktopDeviceId, context.BaseUrl);
+                return false;
+            }
+            catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                ex.StatusCode == System.Net.HttpStatusCode.Forbidden ||
+                ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 _log?.Invoke($"[AUTH] Active attestation check failed with {(int)ex.StatusCode}. Treating session as inactive.");
                 NotifyAuthorizationStatus("Desktop attestation is no longer active. Log in again.", ToolTipIcon.Warning);
@@ -746,7 +880,14 @@ namespace TrayApp.Services
 
                 return AuthorizationHealthResult.Active();
             }
-            catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden || ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            catch (ApiRequestException ex) when (IsDeviceNotRegistered(ex))
+            {
+                RemoveDeviceRegistration(context.DesktopDeviceId, context.BaseUrl);
+                return AuthorizationHealthResult.Removed(DeviceRemovedReason);
+            }
+            catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                ex.StatusCode == System.Net.HttpStatusCode.Forbidden ||
+                ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 return AuthorizationHealthResult.Invalid(inactiveReason);
             }
