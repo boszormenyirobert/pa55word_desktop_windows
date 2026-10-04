@@ -8,6 +8,8 @@ namespace TrayApp.Services
         private readonly HttpApiClient _httpApiClient;
         private readonly AuthenticationService _authenticationService;
 
+        private readonly record struct AccountDeviceRequestContext(string BaseUrl, string AccountId, string DesktopDeviceId);
+
         public AccountDeviceService(
             HttpApiClient httpApiClient,
             AuthenticationService authenticationService)
@@ -18,7 +20,44 @@ namespace TrayApp.Services
 
         public async Task<IReadOnlyList<AccountDeviceDto>> ReadDevicesAsync()
         {
-            AccountDevicesRequestDto request = CreateRequest();
+            EnsureAuthorizedForActiveNamespace();
+            AccountDeviceRequestContext context = CreateActiveNamespaceRequestContext();
+            return await ReadDevicesAsync(context).ConfigureAwait(false);
+        }
+
+        public async Task<IReadOnlyList<AccountDeviceDto>> ReadDevicesAsync(
+            string baseUrl,
+            string accountId,
+            string desktopDeviceId)
+        {
+            AccountDeviceRequestContext context = CreateRequestContext(baseUrl, accountId, desktopDeviceId);
+            return await ReadDevicesAsync(context).ConfigureAwait(false);
+        }
+
+        public async Task DeleteDeviceAsync(AccountDeviceDto device)
+        {
+            ArgumentNullException.ThrowIfNull(device);
+
+            EnsureAuthorizedForActiveNamespace();
+            AccountDeviceRequestContext context = CreateActiveNamespaceRequestContext();
+            await DeleteDeviceAsync(context, device).ConfigureAwait(false);
+        }
+
+        public async Task DeleteDeviceAsync(
+            AccountDeviceDto device,
+            string baseUrl,
+            string accountId,
+            string desktopDeviceId)
+        {
+            ArgumentNullException.ThrowIfNull(device);
+
+            AccountDeviceRequestContext context = CreateRequestContext(baseUrl, accountId, desktopDeviceId);
+            await DeleteDeviceAsync(context, device).ConfigureAwait(false);
+        }
+
+        private async Task<IReadOnlyList<AccountDeviceDto>> ReadDevicesAsync(AccountDeviceRequestContext context)
+        {
+            AccountDevicesRequestDto request = CreateRequest(context);
             string payloadJson = JsonSerializer.Serialize(request);
             IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(
                 request.DesktopDeviceId,
@@ -27,7 +66,7 @@ namespace TrayApp.Services
 
             AccountDevicesResponseDto? response = await SendAsync(request.DesktopDeviceId, () => _httpApiClient
                 .PostJsonAsync<AccountDevicesRequestDto, AccountDevicesResponseDto>(
-                    AppEnvironment.BuildApiUrl(ApiRoutes.AccountDevices),
+                    AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AccountDevices),
                     request,
                     headers))
                 .ConfigureAwait(false);
@@ -36,11 +75,9 @@ namespace TrayApp.Services
             return response!.Devices;
         }
 
-        public async Task DeleteDeviceAsync(AccountDeviceDto device)
+        private async Task DeleteDeviceAsync(AccountDeviceRequestContext context, AccountDeviceDto device)
         {
-            ArgumentNullException.ThrowIfNull(device);
-
-            AccountDeviceDeleteRequestDto request = CreateDeleteRequest(device);
+            AccountDeviceDeleteRequestDto request = CreateDeleteRequest(context, device);
             string payloadJson = JsonSerializer.Serialize(request);
             IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(
                 request.DesktopDeviceId,
@@ -49,7 +86,7 @@ namespace TrayApp.Services
 
             AccountDeviceDeleteResponseDto? response = await SendAsync(request.DesktopDeviceId, () => _httpApiClient
                 .DeleteJsonAsync<AccountDeviceDeleteRequestDto, AccountDeviceDeleteResponseDto>(
-                    AppEnvironment.BuildApiUrl(ApiRoutes.AccountDevices),
+                    AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AccountDevices),
                     request,
                     headers))
                 .ConfigureAwait(false);
@@ -74,20 +111,50 @@ namespace TrayApp.Services
             }
         }
 
-        private AccountDevicesRequestDto CreateRequest()
+        private static AccountDeviceRequestContext CreateRequestContext(
+            string baseUrl,
+            string accountId,
+            string desktopDeviceId)
         {
-            EnsureAuthorized();
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                throw new ArgumentException("Base url must not be empty.", nameof(baseUrl));
+            }
+
+            if (string.IsNullOrWhiteSpace(accountId))
+            {
+                throw new ArgumentException("Account id must not be empty.", nameof(accountId));
+            }
+
+            if (string.IsNullOrWhiteSpace(desktopDeviceId))
+            {
+                throw new ArgumentException("Desktop device id must not be empty.", nameof(desktopDeviceId));
+            }
+
+            return new AccountDeviceRequestContext(baseUrl.TrimEnd('/'), accountId, desktopDeviceId);
+        }
+
+        private static AccountDeviceRequestContext CreateActiveNamespaceRequestContext()
+        {
+            return CreateRequestContext(
+                AppEnvironment.GetActiveNamespaceUrl(),
+                AppEnvironment.GetActiveNamespaceAccountId(),
+                AppEnvironment.GetActiveNamespaceDesktopDeviceId());
+        }
+
+        private static AccountDevicesRequestDto CreateRequest(AccountDeviceRequestContext context)
+        {
             return new AccountDevicesRequestDto
             {
-                AccountId = AppEnvironment.GetActiveNamespaceAccountId(),
-                DesktopDeviceId = AppEnvironment.GetActiveNamespaceDesktopDeviceId(),
+                AccountId = context.AccountId,
+                DesktopDeviceId = context.DesktopDeviceId,
                 Nonce = NonceGenerator.Create()
             };
         }
 
-        private AccountDeviceDeleteRequestDto CreateDeleteRequest(AccountDeviceDto device)
+        private static AccountDeviceDeleteRequestDto CreateDeleteRequest(AccountDeviceRequestContext context, AccountDeviceDto device)
         {
-            AccountDevicesRequestDto activeDevice = CreateRequest();
+            AccountDevicesRequestDto activeDevice = CreateRequest(context);
             string? targetDesktopDeviceId = string.IsNullOrWhiteSpace(device.DesktopDeviceId)
                 ? null
                 : device.DesktopDeviceId;
@@ -110,7 +177,7 @@ namespace TrayApp.Services
             };
         }
 
-        private void EnsureAuthorized()
+        private void EnsureAuthorizedForActiveNamespace()
         {
             if (!_authenticationService.IsAuthorizedForActiveNamespace)
             {

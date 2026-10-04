@@ -50,6 +50,8 @@ namespace TrayApp
         private readonly Button _quickPanelLoginNavButton = new();
         private readonly FlowLayoutPanel _quickPanelAccountsPanel = new();
         private readonly FlowLayoutPanel _quickPanelDevicesPanel = new();
+        private readonly Label _quickPanelDevicesSourceLabel = new();
+        private readonly TrayDropdown _quickPanelDevicesSourceComboBox = new();
         private readonly Panel _quickPanelAccountsGuidancePanel = new();
         private readonly RichTextBox _quickPanelAccountsGuidanceBox = new();
         private readonly Panel _quickPanelFaqPanel = new();
@@ -206,11 +208,16 @@ namespace TrayApp
         private bool _inlineUserRegistrationSubmitting;
         private bool _inlineUserRegistrationAwaitingCompletion;
         private bool _updatingCredentialWorkspaceControls;
+        private bool _updatingDeviceSourceSelection;
         private bool _devicesLoading;
+        private bool _devicesLoadedOnce;
         private bool _deviceDeletionInProgress;
         private string _devicesErrorMessage = string.Empty;
-        private IReadOnlyList<AccountDeviceDto> _accountDevices = Array.Empty<AccountDeviceDto>();
-        private AccountDeviceDto? _devicePendingDeletion;
+        private const string DeviceSourceAllValue = "__all_devices__";
+        private string _selectedDeviceSourceValue = DeviceSourceAllValue;
+        private string _devicePendingDeletionKey = string.Empty;
+        private IReadOnlyList<AccountDeviceServerResult> _accountDeviceServerResults = Array.Empty<AccountDeviceServerResult>();
+        private IReadOnlyList<AccountDeviceListItem> _visibleAccountDevices = Array.Empty<AccountDeviceListItem>();
         private CredentialDeletionConfirmation _deletionConfirmation;
         private string _credentialEditorStatusMessage = string.Empty;
         private string _groupEditorStatusMessage = string.Empty;
@@ -267,6 +274,28 @@ namespace TrayApp
             public Color ActiveNamespaceStatusBackColor { get; init; }
 
             public Color ActiveNamespaceStatusForeColor { get; init; }
+        }
+
+        private sealed class AccountDeviceServerResult
+        {
+            public NamespaceItemDto NamespaceItem { get; init; } = new();
+
+            public string SourceUrl { get; init; } = string.Empty;
+
+            public IReadOnlyList<AccountDeviceDto> Devices { get; init; } = Array.Empty<AccountDeviceDto>();
+
+            public string ErrorMessage { get; init; } = string.Empty;
+        }
+
+        private sealed class AccountDeviceListItem
+        {
+            public AccountDeviceDto Device { get; init; } = new();
+
+            public NamespaceItemDto NamespaceItem { get; init; } = new();
+
+            public string SourceUrl { get; init; } = string.Empty;
+
+            public string IdentityKey { get; init; } = string.Empty;
         }
 
         private void InitializeTrayShell()
@@ -711,6 +740,10 @@ namespace TrayApp
             _quickPanelDevicesPanel.Visible = false;
             _quickPanelDetailPanel.Controls.Add(_quickPanelDevicesPanel);
 
+            ConfigureQuickPanelDevicesSourceFilter();
+            _quickPanelDetailPanel.Controls.Add(_quickPanelDevicesSourceLabel);
+            _quickPanelDetailPanel.Controls.Add(_quickPanelDevicesSourceComboBox);
+
             ConfigureDevicesGuidanceBox();
             _quickPanelDetailPanel.Controls.Add(_quickPanelDevicesGuidancePanel);
 
@@ -754,13 +787,11 @@ namespace TrayApp
             ConfigureSettingsOverviewLink(_quickPanelSettingsProfileLink, "Profile", TrayMenuSection.SettingsUsers);
             ConfigureSettingsOverviewLink(_quickPanelSettingsServersLink, "Servers", TrayMenuSection.SettingsServers);
             ConfigureSettingsOverviewLink(_quickPanelSettingsDevicesLink, "Devices", TrayMenuSection.Devices);
-            ConfigureSettingsOverviewLink(_quickPanelSettingsAccountLink, "Account", TrayMenuSection.Accounts);
 
             _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsOverviewLink);
             _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsProfileLink);
             _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsServersLink);
             _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsDevicesLink);
-            _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsAccountLink);
 
             _quickPanelSettingsDescriptionBox.BackColor = Color.FromArgb(31, 33, 57);
             _quickPanelSettingsDescriptionBox.BorderStyle = BorderStyle.None;
@@ -888,12 +919,6 @@ namespace TrayApp
             {
                 _settingsAccessMessage = string.Empty;
                 _trayMenuController?.SetActiveSection(section, triggerStateChanged: true);
-                return;
-            }
-
-            if (!_authenticationService.IsAuthorizedForActiveNamespace)
-            {
-                ShowSettingsAccessMessage("Log in to the active server before managing devices.");
                 return;
             }
 
@@ -1240,6 +1265,33 @@ namespace TrayApp
             comboBox.DropDownHeight = 220;
         }
 
+        private void ConfigureQuickPanelDevicesSourceFilter()
+        {
+            _quickPanelDevicesSourceLabel.AutoSize = true;
+            _quickPanelDevicesSourceLabel.Font = new Font("Segoe UI Semibold", 8.5F, FontStyle.Bold);
+            _quickPanelDevicesSourceLabel.ForeColor = Color.FromArgb(171, 174, 211);
+            _quickPanelDevicesSourceLabel.Text = "Server URL";
+            _quickPanelDevicesSourceLabel.Visible = false;
+
+            ConfigureTrayComboBox(_quickPanelDevicesSourceComboBox, 9F, Color.FromArgb(41, 43, 71));
+            _quickPanelDevicesSourceComboBox.Visible = false;
+            _quickPanelDevicesSourceComboBox.SelectedIndexChanged += quickPanelDevicesSourceComboBox_SelectedIndexChanged;
+        }
+
+        private void ApplyDevicesSourceFilterLayout()
+        {
+            const int verticalGap = 15;
+
+            int labelTop = _quickPanelDevicesGuidancePanel.Bottom + verticalGap;
+            _quickPanelDevicesSourceLabel.Location = new Point(32, labelTop);
+            _quickPanelDevicesSourceComboBox.Location = new Point(108, labelTop - 4);
+            _quickPanelDevicesSourceComboBox.Size = new Size(502, 25);
+
+            int listTop = _quickPanelDevicesSourceComboBox.Bottom + verticalGap;
+            _quickPanelDevicesPanel.Location = new Point(QuickPanelGuidanceLeft, listTop);
+            _quickPanelDevicesPanel.Height = _quickPanelDetailPanel.Height - _quickPanelDevicesPanel.Top - QuickPanelContentBottomMargin;
+        }
+
         private static void ConfigureCredentialWorkspaceButton(Button button, string text, Point location, EventHandler clickHandler)
         {
             button.Size = new Size(104, 28);
@@ -1401,6 +1453,9 @@ namespace TrayApp
                 _quickPanelHeight - _quickPanelResizeGrip.Height);
             LayoutCredentialEntryEditor();
             LayoutSettingsOverview();
+            ApplyGuidanceListLayout(_quickPanelAccountsGuidancePanel, _quickPanelAccountsPanel);
+            ApplyGuidanceListLayout(_quickPanelDevicesGuidancePanel, _quickPanelDevicesPanel);
+            ApplyDevicesSourceFilterLayout();
 
             if (_quickPanelHost != null)
             {
@@ -1516,6 +1571,12 @@ namespace TrayApp
             if (_trayMenuController?.ActiveSection == TrayMenuSection.Credentials && _authenticationService.IsAuthorizedForActiveNamespace)
             {
                 _ = EnsureCredentialCollectionLoadedAsync(forceRefresh: true);
+                return;
+            }
+
+            if (_trayMenuController?.ActiveSection == TrayMenuSection.Devices)
+            {
+                _ = LoadAccountDevicesAsync();
             }
         }
 
@@ -1670,7 +1731,7 @@ namespace TrayApp
             bool hasAuthenticatedUser = _authenticationService.IsAuthorized;
             bool credentialsSectionEnabled = _authenticationService.IsAuthorizedForActiveNamespace;
 
-            _quickPanelCredentialsNavButton.Visible = credentialsSectionEnabled;
+            _quickPanelCredentialsNavButton.Visible = _isDeviceRegistered;
             _quickPanelSettingsNavButton.Visible = _isDeviceRegistered;
 
             if (!credentialsSectionEnabled && _trayMenuController?.ActiveSection == TrayMenuSection.Credentials)
@@ -1893,7 +1954,7 @@ namespace TrayApp
             rowPanel.Controls.Add(serverNameLabel);
             rowPanel.Controls.Add(activeLabel);
 
-            if (isConnected)
+            if (!string.IsNullOrWhiteSpace(namespaceId))
             {
                 EventHandler selectServer = async (_, _) => await SelectActiveServerAsync(namespaceId);
                 rowPanel.Cursor = Cursors.Hand;
@@ -1919,6 +1980,13 @@ namespace TrayApp
             AppEnvironment.SetActiveNamespace(namespaceId);
             _namespaceSelectionMenuController.RefreshMenu();
             HandleTopMenuNamespaceSelectionChanged();
+
+            if (!_authenticationService.IsAuthorizedForActiveNamespace && _authenticationService.CanLoginForActiveNamespace)
+            {
+                loginToolStripMenuItem_Click(this, EventArgs.Empty);
+                return;
+            }
+
             await RefreshQuickPanelFromBackendAsync().ConfigureAwait(true);
         }
 
@@ -2051,7 +2119,6 @@ namespace TrayApp
             UpdateSettingsOverviewLinkState(_quickPanelSettingsProfileLink, TrayMenuSection.SettingsUsers);
             UpdateSettingsOverviewLinkState(_quickPanelSettingsServersLink, TrayMenuSection.SettingsServers);
             UpdateSettingsOverviewLinkState(_quickPanelSettingsDevicesLink, TrayMenuSection.Devices);
-            UpdateSettingsOverviewLinkState(_quickPanelSettingsAccountLink, TrayMenuSection.Accounts);
 
             if (settingsOverviewActive)
             {
@@ -2066,12 +2133,11 @@ namespace TrayApp
                     "Overview provides a summary of the available settings.\n\n" +
                     "Profile: manage the active profile and related actions.\n\n" +
                     "Servers: add, synchronize, and manage server connections.\n\n" +
-                    "Devices: review and manage registered account devices.\n\n" +
-                    "Account: review the account connections configured for the active profile.";
+                    "Devices: review and manage registered account devices.";
             }
             else if (activeSection is TrayMenuSection.SettingsUsers or TrayMenuSection.SettingsServers)
             {
-                _quickPanelSelectionCard.Location = new Point(32, 190);
+                _quickPanelSelectionCard.Location = new Point(32, 205);
             }
             else if (activeSection == TrayMenuSection.Accounts)
             {
@@ -2080,6 +2146,7 @@ namespace TrayApp
             else if (activeSection == TrayMenuSection.Devices)
             {
                 ApplyGuidanceListLayout(_quickPanelDevicesGuidancePanel, _quickPanelDevicesPanel);
+                ApplyDevicesSourceFilterLayout();
             }
 
             LayoutSettingsOverview();
@@ -2195,25 +2262,65 @@ namespace TrayApp
 
         private async Task LoadAccountDevicesAsync()
         {
-            if (_trayMenuController?.ActiveSection != TrayMenuSection.Devices ||
-                !_authenticationService.IsAuthorizedForActiveNamespace)
+            if (_trayMenuController?.ActiveSection != TrayMenuSection.Devices)
             {
                 return;
             }
 
             _devicesLoading = true;
             _devicesErrorMessage = string.Empty;
-            _devicePendingDeletion = null;
+            _devicePendingDeletionKey = string.Empty;
             UpdateDevicesPresentation();
 
             try
             {
-                _accountDevices = await _accountDeviceService.ReadDevicesAsync().ConfigureAwait(true);
+                if (!_registeredDeviceService.TryReadRegistration(out DesktopRegistration? registration) || registration == null)
+                {
+                    _accountDeviceServerResults = Array.Empty<AccountDeviceServerResult>();
+                    _visibleAccountDevices = Array.Empty<AccountDeviceListItem>();
+                    _devicesLoadedOnce = true;
+                    RebuildDeviceSourceSelector();
+                    return;
+                }
+
+                List<NamespaceItemDto> authorizedNamespaces = registration.Namespaces
+                    .Where(namespaceItem => _authorizationSessionStore.HasActiveSessionForNamespace(registration.UserKey, namespaceItem.NamespaceId))
+                    .ToList();
+
+                if (authorizedNamespaces.Count == 0)
+                {
+                    _accountDeviceServerResults = Array.Empty<AccountDeviceServerResult>();
+                    _visibleAccountDevices = Array.Empty<AccountDeviceListItem>();
+                    _devicesLoadedOnce = true;
+                    RebuildDeviceSourceSelector();
+                    return;
+                }
+
+                Task<AccountDeviceServerResult>[] requests = authorizedNamespaces
+                    .Select(LoadDevicesForNamespaceAsync)
+                    .ToArray();
+
+                _accountDeviceServerResults = await Task.WhenAll(requests).ConfigureAwait(true);
+                _devicesLoadedOnce = true;
+                RebuildDeviceSourceSelector();
+                RebuildVisibleAccountDevices();
+
+                AccountDeviceServerResult[] failedResults = _accountDeviceServerResults
+                    .Where(result => !string.IsNullOrWhiteSpace(result.ErrorMessage))
+                    .ToArray();
+
+                _devicesErrorMessage = failedResults.Length == 0
+                    ? string.Empty
+                    : string.Join(
+                        Environment.NewLine,
+                        failedResults.Select(result => $"{result.SourceUrl}: {result.ErrorMessage}"));
             }
             catch (Exception exception)
             {
-                _accountDevices = Array.Empty<AccountDeviceDto>();
+                _accountDeviceServerResults = Array.Empty<AccountDeviceServerResult>();
+                _visibleAccountDevices = Array.Empty<AccountDeviceListItem>();
                 _devicesErrorMessage = exception.Message;
+                _devicesLoadedOnce = true;
             }
             finally
             {
@@ -2222,11 +2329,148 @@ namespace TrayApp
             }
         }
 
+        private async Task<AccountDeviceServerResult> LoadDevicesForNamespaceAsync(NamespaceItemDto namespaceItem)
+        {
+            string sourceUrl = NormalizeSourceUrl(namespaceItem.Url);
+
+            try
+            {
+                IReadOnlyList<AccountDeviceDto> devices = await _accountDeviceService
+                    .ReadDevicesAsync(namespaceItem.Url, namespaceItem.AccountId, namespaceItem.DesktopDeviceId)
+                    .ConfigureAwait(true);
+
+                return new AccountDeviceServerResult
+                {
+                    NamespaceItem = namespaceItem,
+                    SourceUrl = sourceUrl,
+                    Devices = devices
+                };
+            }
+            catch (Exception exception)
+            {
+                return new AccountDeviceServerResult
+                {
+                    NamespaceItem = namespaceItem,
+                    SourceUrl = sourceUrl,
+                    ErrorMessage = exception.Message
+                };
+            }
+        }
+
+        private void quickPanelDevicesSourceComboBox_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_updatingDeviceSourceSelection || _quickPanelDevicesSourceComboBox.SelectedItem is not SelectionOption option)
+            {
+                return;
+            }
+
+            _selectedDeviceSourceValue = option.Value;
+            _devicePendingDeletionKey = string.Empty;
+            RebuildVisibleAccountDevices();
+            UpdateDevicesPresentation();
+        }
+
+        private void RebuildDeviceSourceSelector()
+        {
+            _updatingDeviceSourceSelection = true;
+
+            try
+            {
+                _quickPanelDevicesSourceComboBox.Items.Clear();
+                _quickPanelDevicesSourceComboBox.Items.Add(new SelectionOption("All devices", DeviceSourceAllValue));
+
+                foreach (string sourceUrl in _accountDeviceServerResults
+                             .Select(result => result.SourceUrl)
+                             .Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    _quickPanelDevicesSourceComboBox.Items.Add(new SelectionOption(sourceUrl, sourceUrl));
+                }
+
+                bool selectedValueExists = _quickPanelDevicesSourceComboBox.Items
+                    .OfType<SelectionOption>()
+                    .Any(option => string.Equals(option.Value, _selectedDeviceSourceValue, StringComparison.Ordinal));
+
+                if (!selectedValueExists)
+                {
+                    _selectedDeviceSourceValue = DeviceSourceAllValue;
+                }
+
+                SelectComboBoxValue(_quickPanelDevicesSourceComboBox, _selectedDeviceSourceValue);
+                _quickPanelDevicesSourceComboBox.Enabled = _quickPanelDevicesSourceComboBox.Items.Count > 1;
+            }
+            finally
+            {
+                _updatingDeviceSourceSelection = false;
+            }
+        }
+
+        private void RebuildVisibleAccountDevices()
+        {
+            IEnumerable<AccountDeviceListItem> mappedItems = _accountDeviceServerResults
+                .Where(result => string.IsNullOrWhiteSpace(result.ErrorMessage))
+                .SelectMany(result => result.Devices.Select(device => new AccountDeviceListItem
+                {
+                    Device = device,
+                    NamespaceItem = result.NamespaceItem,
+                    SourceUrl = result.SourceUrl,
+                    IdentityKey = BuildDeviceIdentityKey(device, result.NamespaceItem.NamespaceId, result.SourceUrl)
+                }));
+
+            if (!string.Equals(_selectedDeviceSourceValue, DeviceSourceAllValue, StringComparison.Ordinal))
+            {
+                mappedItems = mappedItems.Where(item =>
+                    string.Equals(item.SourceUrl, _selectedDeviceSourceValue, StringComparison.OrdinalIgnoreCase));
+            }
+
+            _visibleAccountDevices = mappedItems
+                .OrderByDescending(item => item.Device.LastTimeUsed ?? DateTimeOffset.MinValue)
+                .ThenBy(item => item.Device.DeviceName ?? item.IdentityKey, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private void ResetDevicesState()
+        {
+            _devicesLoading = false;
+            _devicesLoadedOnce = false;
+            _devicesErrorMessage = string.Empty;
+            _selectedDeviceSourceValue = DeviceSourceAllValue;
+            _devicePendingDeletionKey = string.Empty;
+            _accountDeviceServerResults = Array.Empty<AccountDeviceServerResult>();
+            _visibleAccountDevices = Array.Empty<AccountDeviceListItem>();
+            RebuildDeviceSourceSelector();
+        }
+
+        private static string NormalizeSourceUrl(string? sourceUrl)
+        {
+            return string.IsNullOrWhiteSpace(sourceUrl)
+                ? "Unknown server URL"
+                : sourceUrl.TrimEnd('/');
+        }
+
+        private static string BuildDeviceIdentityKey(AccountDeviceDto device, string namespaceId, string sourceUrl)
+        {
+            string scope = $"{namespaceId}|{sourceUrl}";
+
+            if (!string.IsNullOrWhiteSpace(device.DesktopDeviceId))
+            {
+                return $"{scope}|desktop:{device.DesktopDeviceId}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(device.MobileDeviceId))
+            {
+                return $"{scope}|mobile:{device.MobileDeviceId}";
+            }
+
+            return $"{scope}|name:{device.DeviceName?.Trim() ?? "unknown"}";
+        }
+
         private void UpdateDevicesPresentation()
         {
             bool devicesActive = _trayMenuController?.ActiveSection == TrayMenuSection.Devices;
             _quickPanelDevicesPanel.Visible = devicesActive;
             _quickPanelDevicesGuidancePanel.Visible = devicesActive;
+            _quickPanelDevicesSourceLabel.Visible = devicesActive;
+            _quickPanelDevicesSourceComboBox.Visible = devicesActive;
 
             if (!devicesActive)
             {
@@ -2242,17 +2486,14 @@ namespace TrayApp
             _quickPanelDetailTitleLabel.Size = new Size(550, 40);
             _quickPanelDetailDescriptionLabel.Size = new Size(574, 44);
             ApplyGuidanceListLayout(_quickPanelDevicesGuidancePanel, _quickPanelDevicesPanel);
+            ApplyDevicesSourceFilterLayout();
             _quickPanelDevicesGuidancePanel.BringToFront();
+            _quickPanelDevicesSourceLabel.BringToFront();
+            _quickPanelDevicesSourceComboBox.BringToFront();
             _quickPanelSelectionCard.Visible = false;
             _quickPanelMetricsCard.Visible = false;
             _quickPanelInsightCard.Visible = false;
             _quickPanelDevicesPanel.Controls.Clear();
-
-            if (!_authenticationService.IsAuthorizedForActiveNamespace)
-            {
-                _quickPanelDevicesPanel.Controls.Add(CreateDeviceListMessage("Log in to the active server to manage devices."));
-                return;
-            }
 
             if (_devicesLoading)
             {
@@ -2260,19 +2501,30 @@ namespace TrayApp
                 return;
             }
 
+            if (!_devicesLoadedOnce)
+            {
+                _quickPanelDevicesPanel.Controls.Add(CreateDeviceListMessage("Select Devices to load registered devices from all logged-in servers."));
+                return;
+            }
+
+            if (_accountDeviceServerResults.Count == 0)
+            {
+                _quickPanelDevicesPanel.Controls.Add(CreateDeviceListMessage("Log in to one or more servers to manage devices."));
+                return;
+            }
+
             if (!string.IsNullOrWhiteSpace(_devicesErrorMessage))
             {
                 _quickPanelDevicesPanel.Controls.Add(CreateDeviceListMessage(_devicesErrorMessage));
-                return;
             }
 
-            if (_accountDevices.Count == 0)
+            if (_visibleAccountDevices.Count == 0)
             {
-                _quickPanelDevicesPanel.Controls.Add(CreateDeviceListMessage("No registered devices were found."));
+                _quickPanelDevicesPanel.Controls.Add(CreateDeviceListMessage("No registered devices were found for the selected server scope."));
                 return;
             }
 
-            foreach (AccountDeviceDto device in _accountDevices)
+            foreach (AccountDeviceListItem device in _visibleAccountDevices)
             {
                 _quickPanelDevicesPanel.Controls.Add(CreateDeviceRow(device));
             }
@@ -2345,8 +2597,9 @@ namespace TrayApp
             };
         }
 
-        private Control CreateDeviceRow(AccountDeviceDto device)
+        private Control CreateDeviceRow(AccountDeviceListItem item)
         {
+            AccountDeviceDto device = item.Device;
             Panel row = new()
             {
                 BackColor = Color.FromArgb(46, 48, 77),
@@ -2391,7 +2644,7 @@ namespace TrayApp
                 ForeColor = Color.FromArgb(171, 174, 211),
                 Location = new Point(12, 52),
                 Size = new Size(350, 18),
-                Text = namespaceSummary
+                Text = $"{namespaceSummary} | Source: {item.SourceUrl}"
             };
             Panel actionPanel = new()
             {
@@ -2399,7 +2652,7 @@ namespace TrayApp
                 Location = new Point(374, 18),
                 Size = new Size(154, 40)
             };
-            string tooltip = $"{deviceIdentifier}{Environment.NewLine}{namespaceSummary}";
+            string tooltip = $"{deviceIdentifier}{Environment.NewLine}{namespaceSummary}{Environment.NewLine}Source: {item.SourceUrl}";
             _quickPanelToolTip.SetToolTip(row, tooltip);
             _quickPanelToolTip.SetToolTip(nameLabel, tooltip);
             _quickPanelToolTip.SetToolTip(detailLabel, tooltip);
@@ -2410,9 +2663,9 @@ namespace TrayApp
             row.Controls.Add(namespaceLabel);
             row.Controls.Add(actionPanel);
 
-            if (ReferenceEquals(_devicePendingDeletion, device))
+            if (string.Equals(_devicePendingDeletionKey, item.IdentityKey, StringComparison.Ordinal))
             {
-                AddDeviceDeletionConfirmation(actionPanel, device);
+                AddDeviceDeletionConfirmation(actionPanel, item);
             }
             else
             {
@@ -2429,7 +2682,7 @@ namespace TrayApp
                 deleteButton.Paint += DrawDeleteAccountIcon;
                 deleteButton.Click += (_, _) =>
                 {
-                    _devicePendingDeletion = device;
+                    _devicePendingDeletionKey = item.IdentityKey;
                     UpdateDevicesPresentation();
                 };
                 actionPanel.Controls.Add(deleteButton);
@@ -2438,13 +2691,13 @@ namespace TrayApp
             return row;
         }
 
-        private void AddDeviceDeletionConfirmation(Panel actionPanel, AccountDeviceDto device)
+        private void AddDeviceDeletionConfirmation(Panel actionPanel, AccountDeviceListItem item)
         {
             Button cancelButton = new()
             {
                 FlatStyle = FlatStyle.Flat,
                 ForeColor = Color.White,
-            Location = new Point(0, 5),
+                Location = new Point(0, 5),
                 Size = new Size(68, 30),
                 Text = "Cancel",
                 UseVisualStyleBackColor = false
@@ -2452,8 +2705,8 @@ namespace TrayApp
             cancelButton.FlatAppearance.BorderColor = Color.FromArgb(100, 104, 143);
             cancelButton.Click += (_, _) =>
             {
-                _devicePendingDeletion = null;
-                UpdateDevicesPresentation();
+                _devicePendingDeletionKey = string.Empty;
+                UpdateQuickPanelState();
             };
 
             Button confirmButton = new()
@@ -2468,13 +2721,13 @@ namespace TrayApp
                 UseVisualStyleBackColor = false
             };
             confirmButton.FlatAppearance.BorderSize = 0;
-            confirmButton.Click += async (_, _) => await DeleteDeviceFromQuickPanelAsync(device);
+            confirmButton.Click += async (_, _) => await DeleteDeviceFromQuickPanelAsync(item);
 
             actionPanel.Controls.Add(cancelButton);
             actionPanel.Controls.Add(confirmButton);
         }
 
-        private async Task DeleteDeviceFromQuickPanelAsync(AccountDeviceDto device)
+        private async Task DeleteDeviceFromQuickPanelAsync(AccountDeviceListItem item)
         {
             if (_deviceDeletionInProgress)
             {
@@ -2482,20 +2735,24 @@ namespace TrayApp
             }
 
             bool deletedSigningDevice = string.Equals(
-                device.DesktopDeviceId,
-                AppEnvironment.GetActiveNamespaceDesktopDeviceId(),
+                item.Device.DesktopDeviceId,
+                item.NamespaceItem.DesktopDeviceId,
                 StringComparison.Ordinal);
             _deviceDeletionInProgress = true;
             UpdateDevicesPresentation();
 
             try
             {
-                await _accountDeviceService.DeleteDeviceAsync(device).ConfigureAwait(true);
-                _devicePendingDeletion = null;
+                await _accountDeviceService.DeleteDeviceAsync(
+                    item.Device,
+                    item.NamespaceItem.Url,
+                    item.NamespaceItem.AccountId,
+                    item.NamespaceItem.DesktopDeviceId).ConfigureAwait(true);
+                _devicePendingDeletionKey = string.Empty;
 
                 if (deletedSigningDevice)
                 {
-                    RemoveDeletedSigningDeviceRegistration();
+                    RemoveDeletedSigningDeviceRegistration(item.NamespaceItem);
                     return;
                 }
 
@@ -2503,7 +2760,7 @@ namespace TrayApp
             }
             catch (Exception exception)
             {
-                _devicePendingDeletion = null;
+                _devicePendingDeletionKey = string.Empty;
                 _devicesErrorMessage = exception.Message;
             }
             finally
@@ -2517,22 +2774,53 @@ namespace TrayApp
             }
         }
 
-        private void RemoveDeletedSigningDeviceRegistration()
+        private void RemoveDeletedSigningDeviceRegistration(NamespaceItemDto deletedNamespace)
         {
             string? activeUserId = AppEnvironment.GetActiveUserId();
             var configStore = new RegistrationConfigStore();
-            if (string.IsNullOrWhiteSpace(activeUserId) ||
-                !configStore.RemoveRegistration(activeUserId))
+            if (string.IsNullOrWhiteSpace(activeUserId) || string.IsNullOrWhiteSpace(deletedNamespace.NamespaceId))
             {
                 throw new InvalidOperationException("The deleted device could not be removed from local configuration.");
             }
 
+            configStore.RemoveNamespace(activeUserId, deletedNamespace.NamespaceId);
+            _authorizationSessionStore.Revoke(activeUserId, deletedNamespace.NamespaceId);
+
             bool noProfilesRemain = !configStore.TryReadRegistrations(out List<DesktopRegistration>? registrations) ||
                 registrations is not { Count: > 0 };
-            _authenticationService.RevokeAuthorization();
-            _extensionSessionStateStore.MarkInvalid("device_deleted");
-            AppEnvironment.ClearActiveSelection();
-            _isDeviceRegistered = false;
+
+            if (noProfilesRemain)
+            {
+                _authenticationService.RevokeAuthorization();
+                _extensionSessionStateStore.MarkInvalid("device_deleted");
+                AppEnvironment.ClearActiveSelection();
+                _isDeviceRegistered = false;
+            }
+            else
+            {
+                _extensionSessionStateStore.MarkInvalid("authorization_revoked");
+
+                bool activeNamespaceWasRemoved = string.Equals(
+                    AppEnvironment.GetActiveNamespaceId(),
+                    deletedNamespace.NamespaceId,
+                    StringComparison.Ordinal);
+
+                if (activeNamespaceWasRemoved)
+                {
+                    _credentialCollectionCacheKey = string.Empty;
+                    _credentialCollectionLoaded = false;
+                    _selectedCredentialGroupId = string.Empty;
+                    _selectedCredentialEntryId = string.Empty;
+                    _credentialSelectorsFingerprint = string.Empty;
+                    _trayMenuController?.SetActiveSection(TrayMenuSection.Login, triggerStateChanged: true);
+                }
+
+                _userSelectionMenuController.RefreshMenu();
+                _namespaceSelectionMenuController.RefreshMenu();
+                RefreshQuickPanelSelections();
+                ResetDevicesState();
+                _ = LoadAccountDevicesAsync();
+            }
 
             if (noProfilesRemain)
             {
@@ -2541,9 +2829,12 @@ namespace TrayApp
                     "Profile removed",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
+
+                CloseQuickPanel();
             }
 
-            CloseQuickPanel();
+            _lastTrayStateUpdatedAt = DateTimeOffset.Now;
+            UpdateQuickPanelState();
             UpdateAuthenticationMenuItems();
         }
 
@@ -2611,14 +2902,15 @@ namespace TrayApp
         private async Task DeleteAccountFromQuickPanelAsync(string userId, NamespaceItemDto namespaceItem)
         {
             DialogResult confirmation = MessageBox.Show(
-                "Deleting this account deregisters this device and permanently removes all credentials saved on this server. This cannot be undone.",
-                "Delete account?",
+                "Removing this server subscription deregisters this device and removes server-side account data for this server. This cannot be undone.",
+                "Remove server subscription?",
                 MessageBoxButtons.OKCancel,
                 MessageBoxIcon.Warning,
                 MessageBoxDefaultButton.Button2);
 
             if (confirmation != DialogResult.OK)
             {
+                UpdateQuickPanelState();
                 return;
             }
 
@@ -2642,7 +2934,7 @@ namespace TrayApp
             }
             catch (Exception exception)
             {
-                MessageBox.Show(exception.Message, "Account deletion failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(exception.Message, "Server removal failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -3875,7 +4167,13 @@ namespace TrayApp
             _credentialCollectionLoaded = false;
             _namespaceSelectionMenuController.RefreshMenu();
             RefreshQuickPanelSelections();
+            ResetDevicesState();
             UpdateQuickPanelState();
+
+            if (_trayMenuController?.ActiveSection == TrayMenuSection.Devices)
+            {
+                _ = LoadAccountDevicesAsync();
+            }
         }
 
         private void quickPanelNamespaceComboBox_SelectedIndexChanged(object? sender, EventArgs e)
@@ -3896,13 +4194,20 @@ namespace TrayApp
             AppEnvironment.SetActiveNamespace(option.Value);
             _credentialCollectionCacheKey = string.Empty;
             _credentialCollectionLoaded = false;
+            ResetDevicesState();
             UpdateQuickPanelState();
+
+            if (_trayMenuController?.ActiveSection == TrayMenuSection.Devices)
+            {
+                _ = LoadAccountDevicesAsync();
+            }
         }
 
         private void HandleTopMenuNamespaceSelectionChanged()
         {
             _credentialCollectionCacheKey = string.Empty;
             _credentialCollectionLoaded = false;
+            ResetDevicesState();
             RefreshQuickPanelSelections();
             UpdateQuickPanelState();
 
@@ -3910,6 +4215,12 @@ namespace TrayApp
                 _authenticationService.IsAuthorizedForActiveNamespace)
             {
                 _ = EnsureCredentialCollectionLoadedAsync(forceRefresh: true);
+                return;
+            }
+
+            if (_trayMenuController?.ActiveSection == TrayMenuSection.Devices)
+            {
+                _ = LoadAccountDevicesAsync();
             }
         }
 
@@ -3986,10 +4297,26 @@ namespace TrayApp
                 }
 
                 _authenticationService.RevokeAuthorization();
-                AppEnvironment.ClearActiveSelection();
-                _isDeviceRegistered = false;
-                _extensionSessionStateStore.MarkInvalid("user_profile_deleted");
-                CloseQuickPanel();
+                _showInlineUserDeletion = false;
+
+                bool hasRemainingProfiles = configStore.TryReadRegistrations(out List<DesktopRegistration>? registrations) &&
+                    registrations is { Count: > 0 };
+
+                if (!hasRemainingProfiles)
+                {
+                    AppEnvironment.ClearActiveSelection();
+                    _isDeviceRegistered = false;
+                    _extensionSessionStateStore.MarkInvalid("user_profile_deleted");
+                    CloseQuickPanel();
+                }
+                else
+                {
+                    DesktopRegistration nextRegistration = registrations![0];
+                    AppEnvironment.SetActiveUser(nextRegistration.UserKey);
+                    _isDeviceRegistered = true;
+                    _extensionSessionStateStore.MarkInvalid("authorization_revoked");
+                    _trayMenuController?.SetActiveSection(TrayMenuSection.Login, triggerStateChanged: true);
+                }
             }
             catch (Exception exception)
             {
@@ -3998,14 +4325,21 @@ namespace TrayApp
             finally
             {
                 _authenticationInProgress = false;
+                _userSelectionMenuController.RefreshMenu();
+                _namespaceSelectionMenuController.RefreshMenu();
                 RefreshQuickPanelSelections();
+                UpdateQuickPanelState();
                 UpdateAuthenticationMenuItems();
             }
         }
 
         private void PopulateSettingsServerActions()
         {
-            if (_quickPanelSettingsServerActionComboBox.Items.Count == 3)
+            bool canManageServers = _registeredDeviceService.TryReadRegistration(out DesktopRegistration? registration) &&
+                registration is { Namespaces.Count: > 0 };
+
+            int expectedItems = canManageServers ? 4 : 3;
+            if (_quickPanelSettingsServerActionComboBox.Items.Count == expectedItems)
             {
                 return;
             }
@@ -4014,6 +4348,12 @@ namespace TrayApp
             _quickPanelSettingsServerActionComboBox.Items.Add(new SelectionOption("Select server action", string.Empty));
             _quickPanelSettingsServerActionComboBox.Items.Add(new SelectionOption("Add a server", "register"));
             _quickPanelSettingsServerActionComboBox.Items.Add(new SelectionOption("Sync existing server", "sync"));
+
+            if (canManageServers)
+            {
+                _quickPanelSettingsServerActionComboBox.Items.Add(new SelectionOption("Manage subscription...", "manage"));
+            }
+
             _quickPanelSettingsServerActionComboBox.SetSelectedIndexSilently(0);
         }
 
@@ -4038,6 +4378,12 @@ namespace TrayApp
             {
                 _trayMenuController.SetActiveSection(TrayMenuSection.Servers, triggerStateChanged: false);
                 ShowInlineServerRegistration(InlineServerRegistrationMode.NamespaceSync);
+                return;
+            }
+
+            if (option.Value == "manage")
+            {
+                _trayMenuController.SetActiveSection(TrayMenuSection.Accounts, triggerStateChanged: true);
             }
         }
 

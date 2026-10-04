@@ -17,6 +17,7 @@ Only sign in to a server for the profile that owns the credentials you need. Sig
 Select the server, choose Login, and approve the request in the mobile app. The desktop waits for the approval result and shows a tray notification for approval, rejection, timeout, or expired access.
 
 ## How do I add a new server?
+Use this option, if your mobile or any desktop is not regitered on the server.
 
 Open Servers and choose Add a server. Enter the new server URL and a name, then select Continue to generate a QR code.
 

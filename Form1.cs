@@ -169,7 +169,7 @@ namespace TrayApp
 
                     if (deviceIsRegistered)
                     {
-                        EnterRegisteredMode();
+                        EnterRegisteredMode(showQuickPanelOnEntry: true);
                     }
                 }
             }
@@ -216,6 +216,7 @@ namespace TrayApp
                 _lastTrayMessageIcon = ToolTipIcon.Info;
                 _lastTrayStateUpdatedAt = DateTimeOffset.Now;
                 ResetInlineUserRegistration();
+                _trayMenuController?.SetActiveSection(TrayMenuSection.Login, triggerStateChanged: true);
                 RefreshQuickPanelSelections();
                 UpdateQuickPanelState();
                 UpdateAuthenticationMenuItems();
@@ -231,6 +232,12 @@ namespace TrayApp
                 _lastTrayMessageIcon = ToolTipIcon.Info;
                 _lastTrayStateUpdatedAt = DateTimeOffset.Now;
                 ResetInlineServerRegistrationState(clearInputs: true);
+
+                if (_registrationPromptMode is RegistrationPromptMode.ServerRegistration or RegistrationPromptMode.NewServerRegistration)
+                {
+                    _trayMenuController?.SetActiveSection(TrayMenuSection.Login, triggerStateChanged: true);
+                }
+
                 RefreshQuickPanelSelections();
                 UpdateQuickPanelState();
                 UpdateAuthenticationMenuItems();
@@ -298,7 +305,7 @@ namespace TrayApp
             WindowState = FormWindowState.Minimized;
         }
 
-        private void EnterRegisteredMode()
+        private void EnterRegisteredMode(bool showQuickPanelOnEntry = false)
         {
             bool showRegisteredTrayView = _registrationHostedInTray;
             _registrationHostedInTray = false;
@@ -312,7 +319,7 @@ namespace TrayApp
             UpdateQuickPanelState();
             UpdateAuthenticationMenuItems();
 
-            if (showRegisteredTrayView)
+            if (showRegisteredTrayView || showQuickPanelOnEntry)
             {
                 HideToTray();
                 ShowQuickPanel(refreshFromBackend: false);

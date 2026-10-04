@@ -82,10 +82,13 @@ namespace TrayApp
 
             _showInlineUserDeletion = false;
             _showInlineUserRegistration = true;
+            _inlineUserRegistrationSubmitting = false;
+            _inlineUserRegistrationAwaitingCompletion = false;
             _quickPanelUserRegistrationStatusLabel.Text = string.Empty;
             _quickPanelUserRegistrationQrPictureBox.Image = null;
             _quickPanelUserRegistrationQrPictureBox.Visible = false;
             _quickPanelUserRegistrationSubmitButton.Text = "Continue";
+            _quickPanelUserRegistrationSubmitButton.Enabled = true;
 
             try
             {
