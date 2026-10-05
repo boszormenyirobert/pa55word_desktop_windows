@@ -16,6 +16,12 @@ Only sign in to a server for the profile that owns the credentials you need. Sig
 
 Select the server, choose Login, and approve the request in the mobile app. The desktop waits for the approval result and shows a tray notification for approval, rejection, timeout, or expired access.
 
+If the server returns `no_devices`, the Login view explains that no mobile device registered to the account can authorize the request.
+
+## How do I rename my profile?
+
+Sign in with your profile to at least one server, then open Settings, Profile, and choose Rename profile. Enter a non-empty name and select Save name. This updates only your profile's local name in config.json, not server-side account data. Another profile's session cannot authorize the rename.
+
 ## How do I add a new server?
 Use this option, if your mobile or any desktop is not regitered on the server.
 
@@ -48,6 +54,12 @@ When you close the panel and reopen it from the tray while Credentials is active
 Open Settings, then Devices. Select the device you no longer trust and remove it. Removing a device prevents it from approving or accessing your account according to the server's device policy.
 
 Keep at least one trusted device available before removing another device.
+
+## How do I delete a desktop profile?
+
+Open Settings, then Profile, and choose Delete profile. Sign in with that profile to every server registered in it before confirming deletion. Selecting a different active server does not change which registrations are deleted.
+
+Deletion deregisters this desktop from each server; it does not delete accounts or credentials. If a server deletion fails, successfully deleted registrations are removed locally, while the remaining registrations and profile are kept for retry. The profile disappears after its final server registration is removed.
 
 ## Why cannot the desktop connect to a server?
 

@@ -36,6 +36,8 @@ namespace TrayApp.TrayMenu
 
         public string CredentialsErrorMessage { get; init; } = string.Empty;
 
+        public string LoginErrorMessage { get; init; } = string.Empty;
+
         public AuthorizationSessionStore.AuthorizationSessionState? SessionState { get; init; }
 
         public bool HasDesktopSession => SessionState?.Active == true;
