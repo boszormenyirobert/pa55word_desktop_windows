@@ -17,6 +17,13 @@ namespace TrayApp.TrayMenu
 
         public TrayMenuSection ActiveSection { get; private set; }
 
+        public void SetInitialSection(bool authorizedForActiveNamespace)
+        {
+            SetActiveSection(authorizedForActiveNamespace
+                ? TrayMenuSection.Credentials
+                : TrayMenuSection.Login);
+        }
+
         public void Register(TrayMenuSection section, Button button)
         {
             _buttons[section] = button;

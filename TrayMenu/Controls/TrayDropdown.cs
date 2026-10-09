@@ -8,11 +8,48 @@ namespace TrayApp.TrayMenu.Controls
     internal sealed class TrayDropdown : ComboBox
     {
         private const int WmPaint = 0x000F;
+        private const int WmEraseBackground = 0x0014;
         private const int HorizontalTextPadding = 10;
         private static readonly Color BorderColor = Color.FromArgb(59, 61, 88);
         private static readonly Color DisabledTextColor = Color.FromArgb(171, 174, 211);
         private static readonly Color ArrowColor = Color.FromArgb(120, 205, 0);
         private bool _suppressSelectedIndexChanged;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeRect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativePaintStruct
+        {
+            public IntPtr Hdc;
+
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool Erase;
+
+            public NativeRect Paint;
+
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool Restore;
+
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool IncrementalUpdate;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+            public byte[] Reserved;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr BeginPaint(IntPtr hwnd, ref NativePaintStruct paint);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EndPaint(IntPtr hwnd, ref NativePaintStruct paint);
 
         public TrayDropdown()
         {
@@ -110,15 +147,43 @@ namespace TrayApp.TrayMenu.Controls
 
         protected override void WndProc(ref Message m)
         {
-            base.WndProc(ref m);
-
             if (m.Msg == WmPaint)
             {
-                PaintClosedState();
+                var paint = new NativePaintStruct
+                {
+                    Reserved = new byte[32]
+                };
+                IntPtr hdc = BeginPaint(Handle, ref paint);
+
+                try
+                {
+                    if (hdc != IntPtr.Zero)
+                    {
+                        using Graphics target = Graphics.FromHdc(hdc);
+                        using BufferedGraphics buffer = BufferedGraphicsManager.Current.Allocate(target, ClientRectangle);
+                        PaintClosedState(buffer.Graphics);
+                        buffer.Render(target);
+                    }
+                }
+                finally
+                {
+                    EndPaint(Handle, ref paint);
+                }
+
+                m.Result = IntPtr.Zero;
+                return;
             }
+
+            if (m.Msg == WmEraseBackground)
+            {
+                m.Result = (IntPtr)1;
+                return;
+            }
+
+            base.WndProc(ref m);
         }
 
-        private void PaintClosedState()
+        private void PaintClosedState(Graphics graphics)
         {
             Rectangle bounds = ClientRectangle;
             if (bounds.Width <= 0 || bounds.Height <= 0)
@@ -126,7 +191,6 @@ namespace TrayApp.TrayMenu.Controls
                 return;
             }
 
-            using Graphics graphics = Graphics.FromHwnd(Handle);
             using var backgroundBrush = new SolidBrush(Enabled ? BackColor : Color.FromArgb(49, 51, 74));
             using var borderPen = new Pen(BorderColor);
             using var textBrush = new SolidBrush(Enabled ? ForeColor : DisabledTextColor);

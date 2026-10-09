@@ -47,12 +47,13 @@ namespace TrayApp.Services
             AccountDeviceDto device,
             string baseUrl,
             string accountId,
-            string desktopDeviceId)
+            string desktopDeviceId,
+            bool removeLocalRegistrationOnDeviceNotFound = true)
         {
             ArgumentNullException.ThrowIfNull(device);
 
             AccountDeviceRequestContext context = CreateRequestContext(baseUrl, accountId, desktopDeviceId);
-            await DeleteDeviceAsync(context, device).ConfigureAwait(false);
+            await DeleteDeviceAsync(context, device, removeLocalRegistrationOnDeviceNotFound).ConfigureAwait(false);
         }
 
         private async Task<IReadOnlyList<AccountDeviceDto>> ReadDevicesAsync(AccountDeviceRequestContext context)
@@ -75,7 +76,10 @@ namespace TrayApp.Services
             return response!.Devices;
         }
 
-        private async Task DeleteDeviceAsync(AccountDeviceRequestContext context, AccountDeviceDto device)
+        private async Task DeleteDeviceAsync(
+            AccountDeviceRequestContext context,
+            AccountDeviceDto device,
+            bool removeLocalRegistrationOnDeviceNotFound = true)
         {
             AccountDeviceDeleteRequestDto request = CreateDeleteRequest(context, device);
             string payloadJson = JsonSerializer.Serialize(request);
@@ -88,19 +92,23 @@ namespace TrayApp.Services
                 .DeleteJsonAsync<AccountDeviceDeleteRequestDto, AccountDeviceDeleteResponseDto>(
                     AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AccountDevices),
                     request,
-                    headers))
+                    headers),
+                removeLocalRegistrationOnDeviceNotFound)
                 .ConfigureAwait(false);
 
             EnsureSuccess(response?.Success ?? false, response?.Error, "The account device could not be deleted.");
         }
 
-        private async Task<T> SendAsync<T>(string desktopDeviceId, Func<Task<T>> send)
+        private async Task<T> SendAsync<T>(
+            string desktopDeviceId,
+            Func<Task<T>> send,
+            bool removeLocalRegistrationOnDeviceNotFound = true)
         {
             try
             {
                 return await send().ConfigureAwait(false);
             }
-            catch (ApiRequestException ex)
+            catch (ApiRequestException ex) when (removeLocalRegistrationOnDeviceNotFound)
             {
                 if (_authenticationService.TryHandleDeviceRemoved(ex, desktopDeviceId))
                 {

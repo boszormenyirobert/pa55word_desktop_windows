@@ -4,7 +4,6 @@ namespace TrayApp.Services
 {
     internal sealed class AuthStateMonitorService : IDisposable
     {
-        private static readonly bool BackgroundPollingEnabled = true;
         private static readonly TimeSpan PollInterval = TimeSpan.FromMinutes(1);
 
         private readonly AuthenticationService _authenticationService;
@@ -28,12 +27,6 @@ namespace TrayApp.Services
 
         public void Start()
         {
-            if (!BackgroundPollingEnabled)
-            {
-                _log?.Invoke("[AUTH-MONITOR] Background polling is disabled.");
-                return;
-            }
-
             _monitorTask ??= Task.Run(() => RunAsync(_cancellationTokenSource.Token));
         }
 

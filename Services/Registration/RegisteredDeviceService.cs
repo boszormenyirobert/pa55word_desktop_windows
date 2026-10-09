@@ -76,5 +76,10 @@ namespace TrayApp.Services
         {
             _configStore.RemoveNamespace(userId, namespaceId);
         }
+
+        public void RenameRegistration(string userId, string userName)
+        {
+            _configStore.RenameRegistration(userId, userName);
+        }
     }
 }

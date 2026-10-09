@@ -99,12 +99,6 @@ namespace TrayApp.Services
             }
         }
 
-        public static string GetActiveNamespaceAccountIdOrDefault(string fallbackAccountId)
-        {
-            _ = fallbackAccountId;
-            return GetActiveNamespaceAccountId();
-        }
-
         public static string GetActiveNamespaceAccountId()
         {
             NamespaceItemDto activeNamespace = GetActiveNamespace();
@@ -115,12 +109,6 @@ namespace TrayApp.Services
             }
 
             return activeNamespace.AccountId;
-        }
-
-        public static string GetPrimaryNamespaceAccountIdOrDefault(string fallbackAccountId)
-        {
-            _ = fallbackAccountId;
-            return GetPrimaryNamespaceAccountId();
         }
 
         public static string GetPrimaryNamespaceAccountId()
@@ -141,12 +129,6 @@ namespace TrayApp.Services
             return accountId;
         }
 
-        public static string GetActiveNamespaceDesktopDeviceIdOrDefault(string fallbackDesktopDeviceId)
-        {
-            _ = fallbackDesktopDeviceId;
-            return GetActiveNamespaceDesktopDeviceId();
-        }
-
         public static string GetActiveNamespaceDesktopDeviceId()
         {
             NamespaceItemDto activeNamespace = GetActiveNamespace();
@@ -157,12 +139,6 @@ namespace TrayApp.Services
             }
 
             return activeNamespace.DesktopDeviceId;
-        }
-
-        public static string GetPrimaryNamespaceDesktopDeviceIdOrDefault(string fallbackDesktopDeviceId)
-        {
-            _ = fallbackDesktopDeviceId;
-            return GetPrimaryNamespaceDesktopDeviceId();
         }
 
         public static string GetPrimaryNamespaceDesktopDeviceId()
@@ -183,22 +159,6 @@ namespace TrayApp.Services
             return desktopDeviceId;
         }
 
-        public static string GetActiveNamespaceDeviceIdOrDefault(string fallbackDesktopDeviceId)
-        {
-            return GetActiveNamespaceDesktopDeviceIdOrDefault(fallbackDesktopDeviceId);
-        }
-
-        public static string GetPrimaryNamespaceDeviceIdOrDefault(string fallbackDesktopDeviceId)
-        {
-            return GetPrimaryNamespaceDesktopDeviceIdOrDefault(fallbackDesktopDeviceId);
-        }
-
-        public static string GetActiveNamespaceUrlOrDefault(string fallbackBaseUrl)
-        {
-            _ = fallbackBaseUrl;
-            return GetActiveNamespaceUrl();
-        }
-
         public static string GetActiveNamespaceUrl()
         {
             NamespaceItemDto activeNamespace = GetActiveNamespace();
@@ -209,12 +169,6 @@ namespace TrayApp.Services
             }
 
             return activeNamespace.Url.TrimEnd('/');
-        }
-
-        public static string GetPrimaryNamespaceUrlOrDefault(string fallbackBaseUrl)
-        {
-            _ = fallbackBaseUrl;
-            return GetPrimaryNamespaceUrl();
         }
 
         public static string GetPrimaryNamespaceUrl()

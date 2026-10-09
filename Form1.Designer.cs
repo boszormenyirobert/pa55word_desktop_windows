@@ -31,57 +31,22 @@
             this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             this.notifyIcon1 = new NotifyIcon(this.components);
-            this.contextMenuStrip1 = new ContextMenuStrip(this.components);
-            this.loginToolStripMenuItem = new ToolStripMenuItem();
-            this.logoutToolStripMenuItem = new ToolStripMenuItem();
-            this.exitToolStripMenuItem = new ToolStripMenuItem();
             this.pictureBoxQr = new PictureBox();
             this.device_registration = new Label();
             this.baseUrlLabel = new Label();
             this.baseUrlTextBox = new TextBox();
             this.continueRegistrationButton = new Button();
+            this.restartRegistrationButton = new Button();
             this.namespaceNameLabel = new Label();
             this.namespaceNameTextBox = new TextBox();
-            this.contextMenuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)this.pictureBoxQr).BeginInit();
             this.SuspendLayout();
             // 
             // notifyIcon1
             // 
-            this.notifyIcon1.ContextMenuStrip = this.contextMenuStrip1;
             this.notifyIcon1.Icon = (Icon)resources.GetObject("notifyIcon1.Icon");
             this.notifyIcon1.Text = "notifyIcon1";
             this.notifyIcon1.Visible = true;
-            // 
-            // contextMenuStrip1
-            // 
-            this.contextMenuStrip1.AutoSize = false;
-            this.contextMenuStrip1.BackColor = Color.LightSkyBlue;
-            this.contextMenuStrip1.Font = new Font("Segoe UI", 10F);
-            this.contextMenuStrip1.Items.AddRange(new ToolStripItem[] { this.loginToolStripMenuItem, this.logoutToolStripMenuItem, this.exitToolStripMenuItem });
-            this.contextMenuStrip1.Name = "contextMenuStrip1";
-            this.contextMenuStrip1.RenderMode = ToolStripRenderMode.System;
-            this.contextMenuStrip1.Size = new Size(500, 300);
-            // 
-            // loginToolStripMenuItem
-            // 
-            this.loginToolStripMenuItem.Name = "loginToolStripMenuItem";
-            this.loginToolStripMenuItem.Size = new Size(180, 24);
-            this.loginToolStripMenuItem.Text = "login";
-            // 
-            // logoutToolStripMenuItem
-            // 
-            this.logoutToolStripMenuItem.Name = "logoutToolStripMenuItem";
-            this.logoutToolStripMenuItem.Size = new Size(180, 24);
-            this.logoutToolStripMenuItem.Text = "logout";
-            this.logoutToolStripMenuItem.Click += this.logoutToolStripMenuItem_Click;
-            // 
-            // exitToolStripMenuItem
-            // 
-            this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
-            this.exitToolStripMenuItem.Size = new Size(180, 24);
-            this.exitToolStripMenuItem.Text = "exit";
-            this.exitToolStripMenuItem.Click += this.exitToolStripMenuItem_Click;
             // 
             // pictureBoxQr
             // 
@@ -130,6 +95,17 @@
             this.continueRegistrationButton.Visible = false;
             this.continueRegistrationButton.Click += this.continueRegistrationButton_Click;
             // 
+            // restartRegistrationButton
+            //
+            this.restartRegistrationButton.Location = new Point(590, 274);
+            this.restartRegistrationButton.Name = "restartRegistrationButton";
+            this.restartRegistrationButton.Size = new Size(130, 32);
+            this.restartRegistrationButton.TabIndex = 8;
+            this.restartRegistrationButton.Text = "Restart";
+            this.restartRegistrationButton.UseVisualStyleBackColor = true;
+            this.restartRegistrationButton.Visible = false;
+            this.restartRegistrationButton.Click += this.restartRegistrationButton_Click;
+            //
             // namespaceNameLabel
             // 
             this.namespaceNameLabel.AutoSize = true;
@@ -155,6 +131,7 @@
             this.ClientSize = new Size(800, 450);
             this.Controls.Add(this.namespaceNameTextBox);
             this.Controls.Add(this.namespaceNameLabel);
+            this.Controls.Add(this.restartRegistrationButton);
             this.Controls.Add(this.continueRegistrationButton);
             this.Controls.Add(this.baseUrlTextBox);
             this.Controls.Add(this.baseUrlLabel);
@@ -162,7 +139,6 @@
             this.Controls.Add(this.pictureBoxQr);
             this.Name = "Form1";
             this.Text = "Form1";
-            this.contextMenuStrip1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)this.pictureBoxQr).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
@@ -171,15 +147,12 @@
         #endregion
 
         private NotifyIcon notifyIcon1;
-        private ContextMenuStrip contextMenuStrip1;
-        private ToolStripMenuItem loginToolStripMenuItem;
-        private ToolStripMenuItem logoutToolStripMenuItem;
-        private ToolStripMenuItem exitToolStripMenuItem;
         private PictureBox pictureBoxQr;
         private Label device_registration;
         private Label baseUrlLabel;
         private TextBox baseUrlTextBox;
         private Button continueRegistrationButton;
+        private Button restartRegistrationButton;
         private Label namespaceNameLabel;
         private TextBox namespaceNameTextBox;
     }

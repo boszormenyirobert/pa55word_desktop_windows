@@ -39,11 +39,6 @@ namespace TrayApp.Services
             return $"{Authentication}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(desktopDeviceId)}/{Uri.EscapeDataString(namespaceId)}?nonce={Uri.EscapeDataString(nonce)}";
         }
 
-        public static string AuthenticationRevoke(string accountId, string desktopDeviceId, string nonce, string namespaceId)
-        {
-            return AuthenticationRevoke(accountId, desktopDeviceId, nonce);
-        }
-
         public static string AuthenticationRevoke(string accountId, string desktopDeviceId, string nonce)
         {
             return $"{Authentication}/{Uri.EscapeDataString(accountId)}/{Uri.EscapeDataString(desktopDeviceId)}?nonce={Uri.EscapeDataString(nonce)}";

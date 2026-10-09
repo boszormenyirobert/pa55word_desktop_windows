@@ -40,6 +40,7 @@ namespace TrayApp
 
             if (!TryAcquireSingleInstanceFileLock())
             {
+                TryActivateRunningInstance();
                 return;
             }
 
@@ -53,6 +54,7 @@ namespace TrayApp
                 _singleInstanceMutex.Dispose();
                 _singleInstanceMutex = null;
                 ReleaseSingleInstanceFileLock();
+                TryActivateRunningInstance();
                 return;
             }
 

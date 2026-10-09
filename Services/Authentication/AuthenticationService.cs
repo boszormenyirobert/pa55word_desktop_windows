@@ -18,6 +18,10 @@ namespace TrayApp.Services
         private readonly Action<string>? _log;
         private readonly SemaphoreSlim _authenticationLock = new(1, 1);
         private readonly object _deviceRemovalLock = new();
+        private string? _authorizationFailureMessage;
+
+        public const string NoDevicesMessage =
+            "There is no mobile device registered to this account that can authorize the request.";
 
         public const string DeviceRemovedReason = "device_removed";
         public const string DeviceRemovedMessage =
@@ -41,6 +45,30 @@ namespace TrayApp.Services
 
         public bool IsAuthorized => _authorizationSessionStore.IsAuthorized;
 
+        public void RenameProfile(string userId, string userName)
+        {
+            if (string.IsNullOrWhiteSpace(userId) ||
+                !string.Equals(AppEnvironment.GetActiveUserId(), userId, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Only the signed-in profile can rename its account.");
+            }
+
+            DesktopRegistration registration = _registeredDeviceService.ReadRegistration();
+            var sessions = _authorizationSessionStore.GetStates(userId);
+            bool authorized = string.Equals(registration.UserKey, userId, StringComparison.Ordinal) &&
+                registration.Namespaces.Any(server => sessions.Any(session =>
+                    string.Equals(session.NamespaceId, server.NamespaceId, StringComparison.Ordinal) &&
+                    string.Equals(session.BaseUrl, server.Url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(session.AccountId, server.AccountId, StringComparison.Ordinal) &&
+                    string.Equals(session.DesktopId, server.DesktopDeviceId, StringComparison.Ordinal)));
+            if (!authorized)
+            {
+                throw new InvalidOperationException("Log in with this profile to at least one server before renaming its account.");
+            }
+
+            _registeredDeviceService.RenameRegistration(userId, userName);
+        }
+
         public bool HasActiveRegistration => _registeredDeviceService.TryReadRegistration(out _);
 
         public bool HasAuthorizedOtherProfile => _authorizationSessionStore.HasActiveSessionForAnotherUser(
@@ -49,8 +77,6 @@ namespace TrayApp.Services
         public bool HasAnyRegisteredProfileWithActiveSession => _registeredDeviceService
             .ReadRegistrations()
             .Any(registration => _authorizationSessionStore.GetStates(registration.UserKey).Count > 0);
-
-        public bool IsLoginNavigationDisabled => HasAuthorizedOtherProfile;
 
         public bool CanLoginForActiveNamespace => !IsAuthorizedForActiveNamespace && !HasAuthorizedOtherProfile;
 
@@ -137,7 +163,7 @@ namespace TrayApp.Services
                 {
                     RevokeAuthorization(context);
                     _log?.Invoke("[AUTH] Authorization failed. Session revoked.");
-                    NotifyAuthorizationStatus("Login failed. Mobile approval was declined or the session no longer exists.", ToolTipIcon.Error);
+                    NotifyAuthorizationFailure();
                     return false;
                 }
 
@@ -345,6 +371,7 @@ namespace TrayApp.Services
 
         private async Task<bool> RequestAuthorizationAsync(AuthorizationContext context)
         {
+            _authorizationFailureMessage = null;
             try
             {
                 string activeNamespaceId = AppEnvironment.GetActiveNamespaceId() ?? "<null>";
@@ -364,7 +391,7 @@ namespace TrayApp.Services
 
                 string payloadJson = JsonSerializer.Serialize(authenticationPayload);
 
-                IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
+                IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(
                     context.DesktopDeviceId,
                     payloadJson,
                     "authentication request");
@@ -563,7 +590,7 @@ namespace TrayApp.Services
             };
 
             string payloadJson = JsonSerializer.Serialize(serializedStatusPayload);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(
                 context.DesktopDeviceId,
                 payloadJson,
                 "authentication status request");
@@ -672,7 +699,7 @@ namespace TrayApp.Services
         {
             string nonce = NonceGenerator.Create();
             string payloadJson = BuildAuthenticationStatePayloadJson(context, nonce);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(
                 context.DesktopDeviceId,
                 payloadJson,
                 "authentication state request");
@@ -840,7 +867,7 @@ namespace TrayApp.Services
         {
             string nonce = NonceGenerator.Create();
             string payloadJson = BuildAuthenticationStatePayloadJson(context, nonce);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(
                 context.DesktopDeviceId,
                 payloadJson,
                 "authentication state request");
@@ -908,12 +935,12 @@ namespace TrayApp.Services
             };
 
             string payloadJson = JsonSerializer.Serialize(payload);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(
                 context.DesktopDeviceId,
                 payloadJson,
                 "authentication revoke request");
 
-            string endpoint = AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AuthenticationRevoke(context.AccountId, context.DesktopDeviceId, nonce, context.NamespaceId));
+            string endpoint = AppEnvironment.BuildApiUrl(context.BaseUrl, ApiRoutes.AuthenticationRevoke(context.AccountId, context.DesktopDeviceId, nonce));
 
             AuthenticationRevokeResponseDto? response = await _httpApiClient
                 .DeleteJsonAsync<object, AuthenticationRevokeResponseDto>(endpoint, payload, headers)
@@ -991,7 +1018,7 @@ namespace TrayApp.Services
             {
                 RevokeAuthorization(context);
                 _log?.Invoke("[AUTH] Selected namespace authorization failed. Session revoked.");
-                NotifyAuthorizationStatus("Login failed. Mobile approval was declined or the session no longer exists.", ToolTipIcon.Error);
+                NotifyAuthorizationFailure();
                 return false;
             }
 
@@ -1196,11 +1223,28 @@ namespace TrayApp.Services
 
         private void NotifyAuthorizationStatus(string? message, ToolTipIcon icon)
         {
+            if (icon == ToolTipIcon.Error && !string.IsNullOrWhiteSpace(message))
+            {
+                _authorizationFailureMessage = message;
+            }
+
             _authorizationNotificationChanged?.Invoke(message, icon);
+        }
+
+        private void NotifyAuthorizationFailure()
+        {
+            NotifyAuthorizationStatus(
+                _authorizationFailureMessage ?? "Login failed. Mobile approval was declined or the session no longer exists.",
+                ToolTipIcon.Error);
         }
 
         private static string BuildAuthorizationFailureMessage(AuthenticationResponseDto response)
         {
+            if (string.Equals(response.Status, "no_devices", StringComparison.OrdinalIgnoreCase))
+            {
+                return NoDevicesMessage;
+            }
+
             if (string.Equals(response.Status, "not_found", StringComparison.OrdinalIgnoreCase))
             {
                 return "Login failed: authentication session was not found on the backend.";

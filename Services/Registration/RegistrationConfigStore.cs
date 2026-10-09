@@ -220,6 +220,23 @@ namespace TrayApp.Services
             Debug.WriteLine($"Namespace removed: {namespaceId}");
         }
 
+        public void RenameRegistration(string userId, string userName)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(userName))
+            {
+                throw new ArgumentException("Profile id and account name must not be empty.");
+            }
+
+            List<DesktopRegistration> registrations = ReadRegistrations().ToList();
+            DesktopRegistration registration = registrations.FirstOrDefault(item =>
+                string.Equals(item.UserKey, userId, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException("The selected profile could not be found.");
+            registration.UserName = userName.Trim();
+            string json = JsonSerializer.Serialize(
+                registrations.Select(CreateStorageRegistrationObject).ToList(), ConfigJsonOptions);
+            File.WriteAllText(filePath, json);
+        }
+
         public bool RemoveRegistration(string userId)
         {
             if (string.IsNullOrWhiteSpace(userId) ||

@@ -28,6 +28,20 @@ Instructions on how to install and set up the project.
 ## Usage
 How to use the project, including examples and code snippets.
 
+The desktop always opens on startup: Bootstrap registration for an unregistered desktop, Login without an active session for the selected database, or Credentials with an active saved session. Network checks run after the window opens. This also applies to browser-extension launches; the legacy `--start-in-tray` argument no longer hides the window.
+
+## Implementation structure
+
+- The WinForms main window owns the UI; left-clicking or right-clicking the tray icon opens Credentials, falling back to Login or registration when access is unavailable. The tray icon has no menu.
+- The logo appears only in the window header, not beneath the sidebar's MENU label. Clicking it opens `https://pa55word.com` in the default browser. `Assets/pa55word-logo.svg` is the editable source; its transparent PNG rendering is embedded in the app.
+- The custom dark navy window header displays a clickable logo with white lettering and a green outlined-circle "55", followed by light `INVICTUS MANEO I Remain Unconquered` text (with ` Registration` during registration), without a separate leading "55" icon. It supports dragging and only minimize/close buttons while keeping the native resize frame. Maximization is disabled. A thin white horizontal rule separates the header from the main content.
+- Taskbar titles use `pa55word INVICTUS MANEO I Remain Unconquered`. The executable and taskbar retain the transparent outlined-circle "55" icon in `Assets/pa55word.ico`, with sizes from 16 to 256 pixels.
+- `TrayMenu/TrayMenuViews.cs` builds view state directly from a small `TrayMenuContext`. There is no per-view interface or runtime registry.
+- Registration configuration and response parsing live in `RegistrationConfigStore`. `BootstrapRegistrationService` owns its QR service instead of using a global service locator.
+- Authentication, account devices, and credential services share `RequestSigner` and `ApiRoutes` directly.
+- The native host and named-pipe transport share the same framing implementation in `NativePipe`. `INativeMessageProcessor` remains the boundary between transport and request processing.
+- HTTP response parsing is shared across verbs. Local credential decryption is synchronous; backend requests remain asynchronous.
+
 ## AI Implement�ci�s specifik�ci� � QR beolvas�s �s �j eszk�z regisztr�ci�
 
 ### C�l

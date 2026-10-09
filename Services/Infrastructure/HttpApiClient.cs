@@ -1,18 +1,17 @@
 using System.Net.Http.Headers;
 using System.Diagnostics;
-using System.Net;
 using System.Text;
 using System.Text.Json;
-
-/**
- *  after build
- *  powershell -ExecutionPolicy Bypass -File .\NativeMessaging\Install-NativeHost.ps1 -SourceDir "C:\Users\boszo\source\repos\TrayApp\bin\Debug\net8.0-windows" -Browser Edge
-*/
 
 namespace TrayApp.Services
 {
     internal class HttpApiClient
     {
+        private static readonly JsonSerializerOptions ResponseJsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
         private readonly HttpClient _httpClient;
 
         public HttpApiClient(TimeSpan? timeout = null)
@@ -79,24 +78,6 @@ namespace TrayApp.Services
             }
         }
 
-        public async Task PostJsonAsync<T>(
-            string endpoint,
-            T payload,
-            IReadOnlyDictionary<string, string>? headers = null)
-        {
-            string json = JsonSerializer.Serialize(payload);
-            await SendJsonAsync(HttpMethod.Post, endpoint, json, headers, "[HTTP-POST]").ConfigureAwait(false);
-        }
-
-        public async Task PutJsonAsync<T>(
-            string endpoint,
-            T payload,
-            IReadOnlyDictionary<string, string>? headers = null)
-        {
-            string json = JsonSerializer.Serialize(payload);
-            await SendJsonAsync(HttpMethod.Put, endpoint, json, headers, "[HTTP-PUT]").ConfigureAwait(false);
-        }
-
         public async Task<TResponse?> PutJsonAsync<TRequest, TResponse>(
             string endpoint,
             TRequest payload,
@@ -105,17 +86,7 @@ namespace TrayApp.Services
             string json = JsonSerializer.Serialize(payload);
             string responseBody = await SendJsonAsync(HttpMethod.Put, endpoint, json, headers, "[HTTP-PUT]").ConfigureAwait(false);
 
-            if (string.IsNullOrWhiteSpace(responseBody))
-            {
-                return default;
-            }
-
-            return JsonSerializer.Deserialize<TResponse>(
-                responseBody,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+            return DeserializeResponse<TResponse>(responseBody);
         }
 
         public async Task DeleteJsonAsync<T>(
@@ -135,17 +106,7 @@ namespace TrayApp.Services
             string json = JsonSerializer.Serialize(payload);
             string responseBody = await SendJsonAsync(HttpMethod.Delete, endpoint, json, headers, "[HTTP-DELETE]").ConfigureAwait(false);
 
-            if (string.IsNullOrWhiteSpace(responseBody))
-            {
-                return default;
-            }
-
-            return JsonSerializer.Deserialize<TResponse>(
-                responseBody,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+            return DeserializeResponse<TResponse>(responseBody);
         }
 
         public async Task<TResponse?> PostJsonAsync<TRequest, TResponse>(
@@ -156,17 +117,7 @@ namespace TrayApp.Services
             string json = JsonSerializer.Serialize(payload);
             string responseBody = await SendJsonAsync(HttpMethod.Post, endpoint, json, headers, "[HTTP-POST]").ConfigureAwait(false);
 
-            if (string.IsNullOrWhiteSpace(responseBody))
-            {
-                return default;
-            }
-
-            return JsonSerializer.Deserialize<TResponse>(
-                responseBody,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+            return DeserializeResponse<TResponse>(responseBody);
         }
 
         public async Task<TResponse?> GetJsonAsync<TResponse>(
@@ -192,17 +143,7 @@ namespace TrayApp.Services
                     responseBody);
             }
 
-            if (string.IsNullOrWhiteSpace(responseBody))
-            {
-                return default;
-            }
-
-            return JsonSerializer.Deserialize<TResponse>(
-                responseBody,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+            return DeserializeResponse<TResponse>(responseBody);
         }
 
         public async Task GetAsync(
@@ -227,6 +168,13 @@ namespace TrayApp.Services
                     response.StatusCode,
                     responseBody);
             }
+        }
+
+        private static TResponse? DeserializeResponse<TResponse>(string responseBody)
+        {
+            return string.IsNullOrWhiteSpace(responseBody)
+                ? default
+                : JsonSerializer.Deserialize<TResponse>(responseBody, ResponseJsonOptions);
         }
 
         private async Task<string> SendJsonAsync(

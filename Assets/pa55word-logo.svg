@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="240" viewBox="0 0 1000 240">
+  <title>pa55word wordmark</title>
+  <desc>White wordmark with lime-green 55 inside a lime-green outlined circle with a transparent interior (#78CD00).</desc>
+  <circle cx="405" cy="120" r="110" fill="none" stroke="#78CD00" stroke-width="8"/>
+  <g id="wordmark" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="164">
+    <text x="15" y="170" fill="#F7F8FA" textLength="266" lengthAdjust="spacingAndGlyphs">pa</text>
+    <text x="405" y="120" text-anchor="middle" dominant-baseline="central" font-size="130" fill="#78CD00">55</text>
+    <text x="535" y="170" fill="#F7F8FA" textLength="438" lengthAdjust="spacingAndGlyphs">word</text>
+  </g>
+</svg>

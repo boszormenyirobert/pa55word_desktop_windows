@@ -21,7 +21,6 @@ namespace TrayApp
             ServerRegistration
         }
 
-        private bool _isExitRequested = false;
         private bool _isDeviceRegistered;
         private RegistrationPromptMode _registrationPromptMode = RegistrationPromptMode.DeviceRegistration;
         private readonly BootstrapRegistrationService _bootstrapRegistrationService = new BootstrapRegistrationService();
@@ -39,7 +38,6 @@ namespace TrayApp
         private bool _nativePipeServerStarted;
         private bool _authenticationInProgress;
         private Task? _activateInstanceTask;
-        private bool _registrationHostedInTray;
         private bool _allowInitialFormDisplay;
 
         public Form1()
@@ -48,6 +46,7 @@ namespace TrayApp
             Opacity = 0;
             ShowInTaskbar = false;
             WindowState = FormWindowState.Minimized;
+            notifyIcon1.ContextMenuStrip = null;
 
             _activateInstanceEvent = new EventWaitHandle(
                 initialState: false,
@@ -103,50 +102,43 @@ namespace TrayApp
                     DiagnosticLog.Write(message);
                 });
 
-            _activateInstanceTask = Task.Run(() => ListenForActivationRequestsAsync(_activateInstanceCts.Token));
-            _registrationHostedInTray = false;
+            StartPosition = FormStartPosition.CenterScreen;
+            MainWindowPresentation.ApplyBranding(this);
 
-            notifyIcon1.ContextMenuStrip = null;
             notifyIcon1.Visible = true;
             notifyIcon1.Text = "ZeroIntrusion Agent";
 
-            _namespaceSelectionMenuController = new NamespaceSelectionMenuController(
-                _registeredDeviceService,
-                _authorizationSessionStore,
-                _namespaceSelectionToolStripMenuItem,
-                HandleTopMenuNamespaceSelectionChanged);
-
-            _userSelectionMenuController = new UserSelectionMenuController(
-                _registeredDeviceService,
-                _userSelectionToolStripMenuItem,
-                () => _namespaceSelectionMenuController.RefreshMenu(),
-                () => _authenticationService.IsAuthorized);
-
-            _userSelectionToolStripMenuItem.Visible = false;
-            loginToolStripMenuItem.Click += loginToolStripMenuItem_Click;
-            _namespaceSelectionToolStripMenuItem.Visible = false;
-            _newUserToolStripMenuItem.Visible = false;
-            _newUserToolStripMenuItem.Click += newUserToolStripMenuItem_Click;
-            _openTrayPanelToolStripMenuItem.Click += openToolStripMenuItem_Click;
-            contextMenuStrip1.Items.Insert(0, _namespaceSelectionToolStripMenuItem);
-            contextMenuStrip1.Items.Insert(0, _userSelectionToolStripMenuItem);
-            contextMenuStrip1.Items.Insert(0, _openTrayPanelToolStripMenuItem);
-            contextMenuStrip1.Opening += contextMenuStrip1_Opening;
-            contextMenuStrip1.Closing += contextMenuStrip1_Closing;
-            contextMenuStrip1.Closed += contextMenuStrip1_Closed;
-            InitializeTrayShell();
+            InitializeQuickPanel();
             UpdateAuthenticationMenuItems();
 
             _bootstrapRegistrationService.RegistrationCompleted += OnRegistrationCompleted;
             _bootstrapRegistrationService.RegistrationFailed += OnRegistrationFailed;
 
-            // The form stays hidden in tray mode, so create the handle explicitly to allow background services to marshal to the UI thread.
+            // Background UI notifications need a handle before the initial window is shown.
             if (!IsHandleCreated)
             {
                 CreateHandle();
             }
 
+            _activateInstanceTask = Task.Run(() => ListenForActivationRequestsAsync(_activateInstanceCts.Token));
             BootstrapRegistration();
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                // Keep the native resize frame and system menu, but draw our own caption.
+                parameters.Style &= ~0x00C00000;
+                return parameters;
+            }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            MainWindowPresentation.ApplyTitleBarTheme(this);
         }
 
         protected override void SetVisibleCore(bool value)
@@ -154,35 +146,47 @@ namespace TrayApp
             base.SetVisibleCore(value && _allowInitialFormDisplay);
         }
 
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+
+            if (_allowInitialFormDisplay)
+            {
+                BeginInvoke(new Action(ShowAndActivateWindow));
+            }
+        }
+
         private async void BootstrapRegistration()
         {
             try
             {
-                bool deviceIsRegistered = await _bootstrapRegistrationService.LoadOrCreateConfig();
+                bool deviceIsRegistered = _bootstrapRegistrationService.LoadOrCreateConfig();
                 Debug.WriteLine($"Registration state: {deviceIsRegistered}");
 
                 if (deviceIsRegistered)
                 {
+                    EnterRegisteredMode();
                     await _accountLifecycleService.RemoveDeletedAccountsAsync();
                     deviceIsRegistered = _registeredDeviceService.TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? registrations) &&
                         registrations is { Count: > 0 };
 
                     if (deviceIsRegistered)
                     {
-                        EnterRegisteredMode(showQuickPanelOnEntry: true);
+                        RefreshQuickPanelSelections();
+                        UpdateQuickPanelState();
                     }
+                }
+
+                if (!deviceIsRegistered)
+                {
+                    ShowBaseUrlPrompt();
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Bootstrap registration failed: {ex}");
+                MessageBox.Show(ex.Message, "Startup", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-        }
-
-        private async Task StartPollingAfterRenderAsync(string? baseUrlOverride = null)
-        {
-            _bootstrapRegistrationService.StartRegistrationPolling(baseUrlOverride);
-            await Task.CompletedTask;
         }
 
         private void EnsureRegisteredServicesStarted()
@@ -290,28 +294,17 @@ namespace TrayApp
             }
             else
             {
-                ShowBaseUrlPrompt(_registrationHostedInTray);
+                ShowBaseUrlPrompt();
             }
 
             MessageBox.Show(message, "Registration", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
-        private void HideToTray()
+        private void EnterRegisteredMode()
         {
-            Debug.WriteLine("TRAY MODE");
-            CloseQuickPanel();
-            Hide();
-            ShowInTaskbar = false;
-            WindowState = FormWindowState.Minimized;
-        }
-
-        private void EnterRegisteredMode(bool showQuickPanelOnEntry = false)
-        {
-            bool showRegisteredTrayView = _registrationHostedInTray;
-            _registrationHostedInTray = false;
             _isDeviceRegistered = true;
             EnsureRegisteredServicesStarted();
-            _trayMenuController?.SetActiveSection(TrayMenuSection.Login);
+            _trayMenuController?.SetInitialSection(_authenticationService.IsAuthorizedForActiveNamespace);
             _lastTrayMessage = "Desktop registration is complete.";
             _lastTrayMessageIcon = ToolTipIcon.Info;
             _lastTrayStateUpdatedAt = DateTimeOffset.Now;
@@ -319,24 +312,17 @@ namespace TrayApp
             UpdateQuickPanelState();
             UpdateAuthenticationMenuItems();
 
-            if (showRegisteredTrayView || showQuickPanelOnEntry)
-            {
-                HideToTray();
-                ShowQuickPanel(refreshFromBackend: false);
-                return;
-            }
-
-            HideToTray();
+            ShowQuickPanel(refreshFromBackend: false);
+            HandleTrayMenuSectionChanged();
         }
 
-        private void ShowBaseUrlPrompt(bool showAsTrayPrompt = false)
+        private void ShowBaseUrlPrompt()
         {
             bool hasRegisteredUsers = _registeredDeviceService.TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? registrations) &&
                 registrations != null &&
                 registrations.Count > 0;
 
             _registrationPromptMode = RegistrationPromptMode.DeviceRegistration;
-            _registrationHostedInTray = showAsTrayPrompt;
             _isDeviceRegistered = false;
             ApplyRegistrationLayout();
             pictureBoxQr.Visible = false;
@@ -360,17 +346,16 @@ namespace TrayApp
             }
             catch
             {
-                baseUrlTextBox.Text = _bootstrapRegistrationService.GetBootstrapBaseUrl();
+                baseUrlTextBox.Text = string.Empty;
             }
 
-            ShowAndActivateWindow(showAsQuickPanel: showAsTrayPrompt);
+            ShowAndActivateWindow();
             baseUrlTextBox.Focus();
         }
 
         private void ShowServerRegistrationPrompt()
         {
             _registrationPromptMode = RegistrationPromptMode.NewServerRegistration;
-            _registrationHostedInTray = false;
             ApplyRegistrationLayout();
             pictureBoxQr.Visible = false;
             baseUrlLabel.Visible = true;
@@ -401,7 +386,6 @@ namespace TrayApp
         private void ShowNamespaceSyncPrompt()
         {
             _registrationPromptMode = RegistrationPromptMode.ServerRegistration;
-            _registrationHostedInTray = false;
             ApplyRegistrationLayout();
             pictureBoxQr.Visible = false;
             baseUrlLabel.Visible = true;
@@ -438,7 +422,7 @@ namespace TrayApp
             continueRegistrationButton.Visible = false;
             pictureBoxQr.Visible = true;
 
-            Bitmap? qrCode = AppServices.Qr.GetQrCode();
+            Bitmap? qrCode = _bootstrapRegistrationService.QrCode;
 
             if (qrCode == null)
             {
@@ -448,8 +432,9 @@ namespace TrayApp
 
             pictureBoxQr.Image = qrCode;
             pictureBoxQr.SizeMode = PictureBoxSizeMode.Zoom;
+            restartRegistrationButton.Visible = true;
 
-            ShowAndActivateWindow(showAsQuickPanel: _registrationHostedInTray);
+            ShowAndActivateWindow();
         }
 
         private async Task ListenForActivationRequestsAsync(CancellationToken cancellationToken)
@@ -473,7 +458,7 @@ namespace TrayApp
                         }
                         else
                         {
-                            ShowBaseUrlPrompt(showAsTrayPrompt: true);
+                            ShowBaseUrlPrompt();
                         }
                     }));
                 }
@@ -488,7 +473,7 @@ namespace TrayApp
             }
         }
 
-        private void ShowAndActivateWindow(bool showAsQuickPanel = false)
+        private void ShowAndActivateWindow()
         {
             if (IsDisposed)
             {
@@ -497,32 +482,7 @@ namespace TrayApp
 
             _allowInitialFormDisplay = true;
 
-            if (Opacity <= 0)
-            {
-                Opacity = 1;
-            }
-
-            Show();
-            ShowInTaskbar = !showAsQuickPanel;
-
-            if (showAsQuickPanel)
-            {
-                PositionQuickPanel();
-            }
-
-            if (WindowState == FormWindowState.Minimized)
-            {
-                WindowState = FormWindowState.Normal;
-            }
-
-            BringToFront();
-            Activate();
-        }
-
-        private void PositionQuickPanel()
-        {
-            StartPosition = FormStartPosition.Manual;
-            Location = ResolveTrayAnchoredScreenPoint(_quickPanelContainer.Size);
+            MainWindowPresentation.Show(this);
         }
 
         private void HandleAuthorizationNotificationChanged(string? message, ToolTipIcon icon)
@@ -557,7 +517,7 @@ namespace TrayApp
                 return;
             }
 
-            notifyIcon1.BalloonTipTitle = "ZeroIntrusion";
+            notifyIcon1.BalloonTipTitle = "Pa55word.com";
             notifyIcon1.BalloonTipText = message;
             notifyIcon1.BalloonTipIcon = icon;
             notifyIcon1.Visible = true;
@@ -648,12 +608,11 @@ namespace TrayApp
             {
                 CloseQuickPanel();
                 UpdateAuthenticationMenuItems();
+                ShowBaseUrlPrompt();
                 return;
             }
 
             _trayMenuController?.SetActiveSection(TrayMenuSection.Login);
-            _userSelectionMenuController.RefreshMenu();
-            _namespaceSelectionMenuController.RefreshMenu();
             RefreshQuickPanelSelections();
             UpdateQuickPanelState();
             UpdateAuthenticationMenuItems();
@@ -663,20 +622,8 @@ namespace TrayApp
         {
             bool showAuthenticationActions = _isDeviceRegistered;
             bool isAuthorized = _authenticationService.IsAuthorized;
-            bool canLogin = showAuthenticationActions && _authenticationService.CanLoginForActiveNamespace;
             bool canLogout = showAuthenticationActions && isAuthorized;
-            bool expandedTrayView = _showExpandedTrayMenu && _isDeviceRegistered;
-            bool hasUserSelectionItems = _userSelectionToolStripMenuItem.DropDownItems.Count > 0;
-            bool hasNamespaceSelectionItems = _namespaceSelectionToolStripMenuItem.DropDownItems.Count > 0;
 
-            loginToolStripMenuItem.Visible = !expandedTrayView && showAuthenticationActions;
-            loginToolStripMenuItem.Enabled = canLogin && !_authenticationInProgress;
-            logoutToolStripMenuItem.Visible = !expandedTrayView && canLogout;
-            logoutToolStripMenuItem.Enabled = canLogout && !_authenticationInProgress;
-            _openTrayPanelToolStripMenuItem.Visible = !expandedTrayView && !_isDeviceRegistered;
-            _openTrayPanelToolStripMenuItem.Text = "open registration";
-            _userSelectionToolStripMenuItem.Visible = !expandedTrayView && !isAuthorized && hasUserSelectionItems;
-            _namespaceSelectionToolStripMenuItem.Visible = !expandedTrayView && hasNamespaceSelectionItems;
             _quickPanelPrimaryActionButton.Text = canLogout ? "Logout" : "Login";
             _quickPanelPrimaryActionButton.Visible = canLogout;
             _quickPanelPrimaryActionButton.Enabled = canLogout && !_authenticationInProgress;
@@ -731,7 +678,7 @@ namespace TrayApp
                 string? pollingBaseUrl = _registrationPromptMode is RegistrationPromptMode.ServerRegistration or RegistrationPromptMode.NewServerRegistration
                     ? baseUrlTextBox.Text
                     : null;
-                _ = StartPollingAfterRenderAsync(pollingBaseUrl);
+                _bootstrapRegistrationService.StartRegistrationPolling(pollingBaseUrl);
             }
             catch (Exception ex)
             {
@@ -745,14 +692,6 @@ namespace TrayApp
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            if (!_isExitRequested)
-            {
-                e.Cancel = true;
-                HideToTray();
-
-                return;
-            }
-
             try
             {
                 _authenticationService.LogoutAsync().GetAwaiter().GetResult();
@@ -765,6 +704,8 @@ namespace TrayApp
             notifyIcon1.Visible = false;
             CloseQuickPanel();
             _activateInstanceCts.Cancel();
+            _activateInstanceEvent.Set();
+            _activateInstanceTask?.GetAwaiter().GetResult();
             _activateInstanceEvent.Dispose();
             _activateInstanceCts.Dispose();
             _nativePipeMessageServer.Dispose();
@@ -772,14 +713,7 @@ namespace TrayApp
             base.OnFormClosing(e);
         }
 
-        private void exitToolStripMenuItem_Click(object? sender, EventArgs e)
-        {
-            _isExitRequested = true;
-            notifyIcon1.Visible = false;
-            Close();
-        }
-
-        private async void logoutToolStripMenuItem_Click(object sender, EventArgs e)
+        private async Task LogoutAsync()
         {
             try
             {
@@ -799,23 +733,7 @@ namespace TrayApp
             }
         }
 
-        private void registerServerToolStripMenuItem_Click(object? sender, EventArgs e)
-        {
-            if (!_isDeviceRegistered)
-            {
-                return;
-            }
-
-            if (!IsQuickPanelOpen())
-            {
-                ShowExpandedTrayMenu();
-            }
-
-            _trayMenuController?.SetActiveSection(TrayMenuSection.Servers, triggerStateChanged: true);
-            ShowInlineServerRegistration(InlineServerRegistrationMode.NewServer);
-        }
-
-        private async void loginToolStripMenuItem_Click(object? sender, EventArgs e)
+        private async Task LoginAsync()
         {
             try
             {

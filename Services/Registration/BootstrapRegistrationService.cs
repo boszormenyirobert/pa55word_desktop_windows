@@ -12,6 +12,7 @@ namespace TrayApp.Services
         private const string NamespaceSyncRegistrationType = "namespace_sync";
 
         private readonly RegistrationConfigStore _configStore = new();
+        private readonly QrService _qrService = new();
         private CancellationTokenSource _registrationCts = new();
         private PendingRootRegistrationContext? _pendingRootRegistration;
         private PendingRegistrationContext? _pendingServerRegistration;
@@ -19,22 +20,17 @@ namespace TrayApp.Services
         public event Action? RegistrationCompleted;
         public event Action<string>? RegistrationFailed;
 
-        public Task<bool> LoadOrCreateConfig()
+        internal Bitmap? QrCode => _qrService.GetQrCode();
+
+        public bool LoadOrCreateConfig()
         {
             if (_configStore.TryReadRegistrations(out List<DesktopRegistration>? registrations) &&
                 registrations is { Count: > 0 })
             {
-                return Task.FromResult(true);
+                return true;
             }
 
-            ConfigModel bootstrapConfig = _configStore.LoadBootstrapConfig();
-
-            if (!_configStore.FileExists)
-            {
-                _configStore.SaveBootstrapConfig(bootstrapConfig);
-            }
-
-            return Task.FromResult(false);
+            return false;
         }
 
         public void StartRegistrationPolling(string? baseUrlOverride = null)
@@ -148,7 +144,7 @@ namespace TrayApp.Services
 
             LogNamespaceRegistration($"Namespace QR payload: {payload}");
 
-            AppServices.Qr.GenerateQrCode(payload);
+            _qrService.GenerateQrCode(payload);
         }
 
         private async Task PrepareBootstrapConfigAndQrAsync(ConfigModel bootstrapConfig)
@@ -173,8 +169,7 @@ namespace TrayApp.Services
                 }).ConfigureAwait(false);
             }
 
-            _configStore.SaveBootstrapConfig(bootstrapConfig);
-            AppServices.Qr.GenerateQrCode(CreateJsonToQrCode(bootstrapConfig));
+            _qrService.GenerateQrCode(CreateJsonToQrCode(bootstrapConfig));
         }
 
         private async Task<DesktopRegistration?> PollRegistrationApi(string? baseUrlOverride, CancellationTokenSource registrationCts)
@@ -217,7 +212,7 @@ namespace TrayApp.Services
                 nonce
             });
 
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(
                 desktopDeviceId,
                 registrationPayload,
                 "registration polling request");
@@ -252,7 +247,7 @@ namespace TrayApp.Services
                         {
                             LogRegistration($"SSE raw message: {message}");
 
-                            var parsed = Transformer.ToRegistrationResponse(message);
+                            var parsed = RegistrationConfigStore.ParseRegistrationResponse(message);
 
                             bool isValidRegistration =
                                 parsed != null &&
@@ -376,7 +371,7 @@ namespace TrayApp.Services
                 nonce
             });
 
-            IReadOnlyDictionary<string, string> resolveHeaders = BrowserCommandHandler.CreateSignatureHeaders(
+            IReadOnlyDictionary<string, string> resolveHeaders = RequestSigner.CreateSignatureHeaders(
                 pendingRegistration.DeviceId,
                 resolvePayload,
                 "namespace resolve request");
@@ -494,7 +489,8 @@ namespace TrayApp.Services
                 type = "deviceRegistration",
                 desktopDeviceId = bootstrapConfig.DesktopDeviceId,
                 publicKey = bootstrapConfig.PublicKeyDER,
-                deviceName = Environment.MachineName
+                deviceName = Environment.MachineName,
+                targetUrl = bootstrapConfig.BaseUrl
             };
 
             return JsonSerializer.Serialize(data);

@@ -24,6 +24,11 @@ namespace TrayApp.Services
 
             string json = File.ReadAllText(filePath);
 
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return new ConfigModel();
+            }
+
             if (TryParseRegistrations(json, out List<DesktopRegistration>? registrations) &&
                 registrations is { Count: > 0 })
             {
@@ -33,13 +38,20 @@ namespace TrayApp.Services
                 };
             }
 
-            using JsonDocument document = JsonDocument.Parse(json);
-            if (document.RootElement.ValueKind == JsonValueKind.Array)
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(json);
+                if (document.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    return new ConfigModel();
+                }
+
+                return JsonSerializer.Deserialize<ConfigModel>(json, BootstrapConfigJsonOptions) ?? new ConfigModel();
+            }
+            catch (JsonException)
             {
                 return new ConfigModel();
             }
-
-            return JsonSerializer.Deserialize<ConfigModel>(json, BootstrapConfigJsonOptions) ?? new ConfigModel();
         }
 
         public void SaveBootstrapConfig(ConfigModel config)
@@ -80,6 +92,24 @@ namespace TrayApp.Services
             return registrations;
         }
 
+        internal static DesktopRegistration? ParseRegistrationResponse(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return null;
+            }
+
+            RootDeviceRegistrationResponseDto? response = JsonSerializer.Deserialize<RootDeviceRegistrationResponseDto>(
+                json, BootstrapConfigJsonOptions);
+            if (response?.Dek != null)
+            {
+                response.Dek.Namespaces = response.Namespaces ?? new List<NamespaceItemDto>();
+                return response.Dek;
+            }
+
+            return JsonSerializer.Deserialize<DesktopRegistration>(json, BootstrapConfigJsonOptions);
+        }
+
         private static bool TryParseRegistrations(string json, out List<DesktopRegistration>? registrations)
         {
             registrations = null;
@@ -100,7 +130,7 @@ namespace TrayApp.Services
                 }
                 else if (document.RootElement.ValueKind == JsonValueKind.Object)
                 {
-                    DesktopRegistration? registration = Transformer.ToRegistrationResponse(json);
+                    DesktopRegistration? registration = ParseRegistrationResponse(json);
 
                     if (!IsValidRegistration(registration))
                     {

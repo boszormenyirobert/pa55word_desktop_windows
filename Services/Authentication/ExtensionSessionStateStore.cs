@@ -19,13 +19,7 @@ namespace TrayApp.Services
         {
             lock (_syncRoot)
             {
-                return new ExtensionSessionStateResponseDto
-                {
-                    Authorized = _state.Authorized,
-                    CloseExtension = _state.CloseExtension,
-                    AuthVersion = _state.AuthVersion,
-                    Reason = _state.Reason
-                };
+                return CreateSnapshotUnsafe();
             }
         }
 

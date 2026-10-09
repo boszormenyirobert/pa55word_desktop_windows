@@ -43,10 +43,10 @@ namespace TrayApp.Services
             };
 
             string payloadJson = JsonSerializer.Serialize(payload);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group read request");
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group read request");
 
             List<CredentialGroupDto>? groups = await SendAsync(desktopDeviceId, () => _httpApiClient
-                .PostJsonAsync<ConnectionReadRequestDto, List<CredentialGroupDto>>(CredentialApiEndpoints.GroupRead, payload, headers))
+                .PostJsonAsync<ConnectionReadRequestDto, List<CredentialGroupDto>>(AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreGroupAll), payload, headers))
                 .ConfigureAwait(false);
 
             if (groups == null)
@@ -72,10 +72,10 @@ namespace TrayApp.Services
             };
 
             string payloadJson = JsonSerializer.Serialize(payload);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential read request");
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential read request");
 
             List<ConnectionReadItemDto>? items = await SendAsync(desktopDeviceId, () => _httpApiClient
-                .PostJsonAsync<ConnectionReadRequestDto, List<ConnectionReadItemDto>>(CredentialApiEndpoints.ConnectionRead, payload, headers))
+                .PostJsonAsync<ConnectionReadRequestDto, List<ConnectionReadItemDto>>(AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreAll), payload, headers))
                 .ConfigureAwait(false);
 
             items ??= new List<ConnectionReadItemDto>();
@@ -92,19 +92,19 @@ namespace TrayApp.Services
                 .ToArray();
         }
 
-        public Task<CredentialEntryDetail> ReadEntryDetailAsync(CredentialEntryListItem item)
+        public CredentialEntryDetail ReadEntryDetail(CredentialEntryListItem item)
         {
             ArgumentNullException.ThrowIfNull(item);
 
             var (_, dek) = _registeredDeviceService.ReadRegistrationAndDecryptDek();
             BrowserRegistryDto registry = DeserializeRegistry(dek, item.Iv, item.AuthTag, item.EncryptedRegistry);
 
-            return Task.FromResult(new CredentialEntryDetail(
+            return new CredentialEntryDetail(
                 item.Id,
                 item.Label,
                 registry,
                 item.GroupId,
-                item.GroupName));
+                item.GroupName);
         }
 
         public async Task<CredentialEntryListItem?> CreateEntryAsync(CredentialEntryDraft draft)
@@ -132,10 +132,10 @@ namespace TrayApp.Services
             };
 
             string payloadJson = JsonSerializer.Serialize(payload);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential create request");
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential create request");
 
             ConnectionReadItemDto? response = await SendAsync(desktopDeviceId, () => _httpApiClient
-                .PostJsonAsync<ConnectionRequestDto, ConnectionReadItemDto>(CredentialApiEndpoints.Connection, payload, headers))
+                .PostJsonAsync<ConnectionRequestDto, ConnectionReadItemDto>(AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStore), payload, headers))
                 .ConfigureAwait(false);
 
             return response == null ? null : new CredentialEntryListItem(
@@ -179,10 +179,10 @@ namespace TrayApp.Services
             };
 
             string payloadJson = JsonSerializer.Serialize(payload);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential update request");
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential update request");
 
             ConnectionReadItemDto? response = await SendAsync(desktopDeviceId, () => _httpApiClient
-                .PutJsonAsync<ConnectionRequestDto, ConnectionReadItemDto>(CredentialApiEndpoints.Connection, payload, headers))
+                .PutJsonAsync<ConnectionRequestDto, ConnectionReadItemDto>(AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStore), payload, headers))
                 .ConfigureAwait(false);
 
             return response == null ? null : new CredentialEntryListItem(
@@ -211,11 +211,11 @@ namespace TrayApp.Services
             };
 
             string payloadJson = JsonSerializer.Serialize(request);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential delete request");
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray credential delete request");
 
             await SendAsync(desktopDeviceId, async () =>
                 {
-                    await _httpApiClient.DeleteJsonAsync(CredentialApiEndpoints.Connection, request, headers).ConfigureAwait(false);
+                    await _httpApiClient.DeleteJsonAsync(AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStore), request, headers).ConfigureAwait(false);
                     return true;
                 })
                 .ConfigureAwait(false);
@@ -239,10 +239,10 @@ namespace TrayApp.Services
             };
 
             string payloadJson = JsonSerializer.Serialize(request);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group create request");
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group create request");
 
             return await SendAsync(desktopDeviceId, () => _httpApiClient
-                .PostJsonAsync<CredentialGroupCreateRequestDto, CredentialGroupDto>(CredentialApiEndpoints.Group, request, headers))
+                .PostJsonAsync<CredentialGroupCreateRequestDto, CredentialGroupDto>(AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreGroup), request, headers))
                 .ConfigureAwait(false);
         }
 
@@ -264,10 +264,10 @@ namespace TrayApp.Services
             };
 
             string payloadJson = JsonSerializer.Serialize(request);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group update request");
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group update request");
 
             return await SendAsync(desktopDeviceId, () => _httpApiClient
-                .PutJsonAsync<CredentialGroupUpdateRequestDto, CredentialGroupDto>(CredentialApiEndpoints.Group, request, headers))
+                .PutJsonAsync<CredentialGroupUpdateRequestDto, CredentialGroupDto>(AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreGroup), request, headers))
                 .ConfigureAwait(false);
         }
 
@@ -292,10 +292,10 @@ namespace TrayApp.Services
             };
 
             string payloadJson = JsonSerializer.Serialize(request);
-            IReadOnlyDictionary<string, string> headers = BrowserCommandHandler.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group delete request");
+            IReadOnlyDictionary<string, string> headers = RequestSigner.CreateSignatureHeaders(desktopDeviceId, payloadJson, "tray group delete request");
 
             return await SendAsync(desktopDeviceId, () => _httpApiClient
-                .DeleteJsonAsync<CredentialGroupDeleteRequestDto, CredentialGroupDto>(CredentialApiEndpoints.Group, request, headers))
+                .DeleteJsonAsync<CredentialGroupDeleteRequestDto, CredentialGroupDto>(AppEnvironment.BuildApiUrl(ApiRoutes.CredentialStoreGroup), request, headers))
                 .ConfigureAwait(false);
         }
 

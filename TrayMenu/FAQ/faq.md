@@ -1,10 +1,22 @@
 # Desktop FAQ
 
+## How does the desktop window work?
+
+Starting the app always opens the appropriate window: registration (Bootstrap) when no profile is registered, Login when the active database has no active session, or Credentials when it does. The initial view uses the saved session state without waiting for network checks; background checks can invalidate expired or revoked access. You can move, resize, minimize, or maximize the registered desktop window using the standard Windows controls.
+
+Closing the window with X hides it without stopping the background agent. Left-click or right-click the tray icon to open Credentials. If the active database has no active session, Login opens instead; an unregistered desktop opens registration. The tray icon does not show a menu. Launching the app again also brings the existing instance forward.
+
+Minimizing the window keeps it on the taskbar. There is no longer an Exit command on the tray icon; closing the window keeps the background agent running.
+
+The same startup behavior applies when the browser extension starts the agent. The legacy `--start-in-tray` argument no longer suppresses the window.
+
 ## How do I get started?
 
 Install and register the mobile app first. The mobile app establishes your account and approves desktop access.
 
 Open the desktop app, enter the server URL, create a profile, and scan the displayed QR code with the mobile app. Keep the mobile app online until desktop registration completes.
+
+In Settings, Profile, Add new profile, the server URL and profile name are read-only while the generated QR code is displayed. Select Cancel to stop waiting for mobile confirmation and unlock the inputs. The form stays open with your entered values, so you can edit them and select Continue to generate a new QR code.
 
 ## How do I select the correct profile on a shared computer?
 
@@ -22,30 +34,32 @@ If the server returns `no_devices`, the Login view explains that no mobile devic
 
 Sign in with your profile to at least one server, then open Settings, Profile, and choose Rename profile. Enter a non-empty name and select Save name. This updates only your profile's local name in config.json, not server-side account data. Another profile's session cannot authorize the rename.
 
-## How do I add a new server?
-Use this option, if your mobile or any desktop is not regitered on the server.
+## How do I add a new database?
+Use this option when no mobile device has yet been granted access to the database.
 
-Open Servers and choose Add a server. Enter the new server URL and a name, then select Continue to generate a QR code.
+Open Manage Databases and choose Add a database. Enter the connection path and database name, then select Continue to generate a QR code.
 
-Scan the QR code with a mobile device already registered to your account. The mobile app registers this desktop with the new server, so separate mobile registration on that server is not required.
+Scan the QR code with a mobile device that can approve the connection. The mobile app grants this desktop access to the database.
 
-## What is the difference between Add a server and Sync existing server?
+## What is the difference between Add a database and granting access to an existing database?
 
-Choose Add a server when the mobile app should establish access to a new server for this desktop.
+Choose Add a database when no mobile device has yet been granted access to the database.
 
-Choose Sync existing server when the mobile device is already registered on the target server and this desktop only needs to join it. In both cases, scan the generated QR code with the mobile app.
+Choose Grant access to an existing database when the mobile device already has access and can approve this desktop connection. In both cases, scan the generated QR code with the mobile app.
 
 ## How do I add a second desktop?
 
-Install the desktop app on the additional computer and use the same server URL. Complete its desktop registration by scanning the QR code with a mobile device already registered to your account.
+Install the desktop app on the additional computer and use the same connection path. Complete its desktop registration by scanning the QR code with a mobile device that can approve the connection.
 
-If the target server is already known by the mobile app, use Sync existing server from the new desktop after its initial setup.
+If the mobile device already has access to the database, use Grant access to an existing database from the new desktop after its initial setup.
 
 ## How do I create and organize credentials?
 
 Sign in to the active server, then open Credentials. Create a group when you want to organize related entries, create the credentials you need, and assign them to the appropriate group.
 
 The active server and selected group control the entries displayed in this view.
+
+The full-height All credentials list on the left always shows every credential for the active server, regardless of the Group dropdown filter. Select a credential in the list to select its group and entry in the dropdowns and load its details into the input fields. Credentials without a group select Ungrouped. The list stays up to date after creating, editing, or deleting credentials.
 
 When you close the panel and reopen it from the tray while Credentials is active, the group and entry selectors keep their current selections.
 

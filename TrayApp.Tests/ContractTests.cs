@@ -15,6 +15,13 @@ public sealed class ContractTests
     }
 
     [Fact]
+    public void AuthenticationRevoke_PreservesRouteAndEscapesIdentifiers()
+    {
+        Assert.Equal("authentication/account%2Fid/desktop%20id?nonce=nonce%2Bvalue",
+            ApiRoutes.AuthenticationRevoke("account/id", "desktop id", "nonce+value"));
+    }
+
+    [Fact]
     public void CreateErrorResponseJson_PreservesExtensionErrorContract()
     {
         string responseJson = BrowserCommandHandler.CreateErrorResponseJson("processing_error", "Request failed.");
