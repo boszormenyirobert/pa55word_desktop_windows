@@ -9,6 +9,7 @@ namespace TrayApp.TrayMenu
     internal static class MainWindowPresentation
     {
         internal static readonly Size MinimumClientSize = new(820, 660 + WindowHeader.HeaderHeight);
+        private const int InitialClientHeight = 700;
         private const int DwmUseImmersiveDarkMode = 20;
         private const int DwmCaptionColor = 35;
         private const int DwmTextColor = 36;
@@ -98,9 +99,10 @@ namespace TrayApp.TrayMenu
             Size minimumSize = new(
                 minimumWidth + nonClientWidth,
                 MinimumClientSize.Height + boundsSize.Height - window.ClientSize.Height);
-            Size clientSize = new(
-                Math.Max(window.ClientSize.Width, minimumWidth),
-                Math.Max(window.ClientSize.Height, MinimumClientSize.Height));
+            int clientHeight = window.WindowState == FormWindowState.Minimized
+                ? Math.Max(MinimumClientSize.Height, InitialClientHeight)
+                : Math.Max(window.ClientSize.Height, MinimumClientSize.Height);
+            Size clientSize = new(minimumWidth, clientHeight);
 
             if (window.MaximizeBox)
             {
@@ -112,19 +114,24 @@ namespace TrayApp.TrayMenu
                 window.MinimizeBox = true;
             }
 
+            if (!window.MinimumSize.IsEmpty)
+            {
+                window.MinimumSize = Size.Empty;
+            }
+
             if (!window.MaximumSize.IsEmpty)
             {
                 window.MaximumSize = Size.Empty;
             }
 
-            if (window.MinimumSize != minimumSize)
-            {
-                window.MinimumSize = minimumSize;
-            }
-
             if (window.ClientSize != clientSize)
             {
                 window.ClientSize = clientSize;
+            }
+
+            if (window.MinimumSize != minimumSize)
+            {
+                window.MinimumSize = minimumSize;
             }
 
             Size maximumSize = new(clientSize.Width + nonClientWidth, int.MaxValue);

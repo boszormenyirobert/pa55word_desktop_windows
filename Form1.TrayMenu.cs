@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -140,6 +141,7 @@ namespace TrayApp
         private readonly ToolTip _quickPanelToolTip = new();
         private readonly Panel _quickPanelCredentialWorkspacePanel = new();
         private readonly CredentialListPanel _quickPanelCredentialListPanel = new();
+        private readonly Label _quickPanelCredentialListCollapseButton = new();
         private readonly Panel _quickPanelCredentialEntryEditorPanel = new();
         private readonly Panel _quickPanelCredentialGroupEditorPanel = new();
         private readonly Button _quickPanelCredentialBackButton = new();
@@ -191,6 +193,8 @@ namespace TrayApp
         private string _selectedCredentialEntryId = string.Empty;
         private string _credentialCollectionCacheKey = string.Empty;
         private bool _credentialCollectionLoaded;
+        private bool _credentialListCollapsed = true;
+        private bool _credentialListCollapseHovered;
         private bool _credentialDetailLoading;
         private int _credentialDetailLoadRequestVersion;
         private CredentialWorkspaceMode _credentialWorkspaceMode = CredentialWorkspaceMode.ViewEntry;
@@ -700,8 +704,27 @@ namespace TrayApp
             _quickPanelDetailPanel.Controls.Add(_quickPanelFaqPanel);
 
             _quickPanelContainer.Controls.Add(_quickPanelDetailPanel);
+            _quickPanelCredentialListCollapseButton.Size = new Size(28, 28);
+            _quickPanelCredentialListCollapseButton.BackColor = Color.Transparent;
+            _quickPanelCredentialListCollapseButton.Cursor = Cursors.Hand;
+            _quickPanelCredentialListCollapseButton.Paint += quickPanelCredentialListCollapseButton_Paint;
+            _quickPanelCredentialListCollapseButton.Click += quickPanelCredentialListCollapseButton_Click;
+            _quickPanelCredentialListCollapseButton.MouseEnter += (_, _) =>
+            {
+                _credentialListCollapseHovered = true;
+                _quickPanelCredentialListCollapseButton.Invalidate();
+            };
+            _quickPanelCredentialListCollapseButton.MouseLeave += (_, _) =>
+            {
+                _credentialListCollapseHovered = false;
+                _quickPanelCredentialListCollapseButton.Invalidate();
+            };
+            _quickPanelCredentialListCollapseButton.Visible = false;
             _quickPanelCredentialListPanel.Visible = false;
             _quickPanelCredentialListPanel.EntrySelected += SelectCredentialFromList;
+            _quickPanelCredentialListPanel.SizeChanged += (_, _) => LayoutCredentialListCollapseButton();
+            _quickPanelContainer.SizeChanged += (_, _) => LayoutCredentialListCollapseButton();
+            _quickPanelContainer.Controls.Add(_quickPanelCredentialListCollapseButton);
             _quickPanelContainer.Controls.Add(_quickPanelCredentialListPanel);
             _quickPanelContainer.Controls.Add(_quickPanelDividerPanel);
             _quickPanelContainer.Controls.Add(_quickPanelMenuPanel);
@@ -3595,7 +3618,20 @@ namespace TrayApp
             _quickPanelMetricsCard.Visible = !credentialsLayout;
             _quickPanelInsightCard.Visible = !credentialsLayout;
             _quickPanelCredentialWorkspacePanel.Visible = credentialsLayout;
-            _quickPanelCredentialListPanel.Visible = credentialsLayout;
+            _quickPanelCredentialListPanel.Visible = credentialsLayout && !_credentialListCollapsed;
+            _quickPanelCredentialListCollapseButton.Visible = credentialsLayout;
+            _quickPanelCredentialListCollapseButton.AccessibleName = _credentialListCollapsed
+                ? "Show credential list"
+                : "Hide credential list";
+            _quickPanelToolTip.SetToolTip(_quickPanelCredentialListCollapseButton,
+                _quickPanelCredentialListCollapseButton.AccessibleName);
+            _quickPanelCredentialListCollapseButton.Invalidate();
+            LayoutCredentialListCollapseButton();
+
+            if (!_credentialListCollapsed)
+            {
+                _quickPanelCredentialListPanel.Width = CredentialListPanel.PanelWidth;
+            }
 
             if (credentialsLayout)
             {
@@ -3606,8 +3642,40 @@ namespace TrayApp
                     _credentialsErrorMessage);
             }
 
-            MainWindowPresentation.Configure(this, showCredentialList: credentialsLayout);
+            MainWindowPresentation.Configure(this, showCredentialList: credentialsLayout && !_credentialListCollapsed);
             LayoutMainWindowContent();
+        }
+
+        private void quickPanelCredentialListCollapseButton_Click(object? sender, EventArgs e)
+        {
+            _credentialListCollapsed = !_credentialListCollapsed;
+            UpdateCredentialWorkspacePresentation(credentialsLayout: true);
+        }
+
+        private void LayoutCredentialListCollapseButton()
+        {
+            int boundary = _quickPanelCredentialListPanel.Visible
+                ? _quickPanelCredentialListPanel.Right
+                : _quickPanelDividerPanel.Right;
+            _quickPanelCredentialListCollapseButton.Location = new Point(
+                boundary,
+                Math.Max(0, (_quickPanelContainer.Height - _quickPanelCredentialListCollapseButton.Height) / 2));
+            _quickPanelCredentialListCollapseButton.BringToFront();
+        }
+
+        private void quickPanelCredentialListCollapseButton_Paint(object? sender, PaintEventArgs e)
+        {
+            Color iconColor = _credentialListCollapseHovered
+                ? Color.FromArgb(190, 245, 122)
+                : Color.FromArgb(120, 205, 0);
+            using var pen = new Pen(iconColor, 1.5F);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.DrawLine(pen, 0, 5, 0, 23);
+
+            Point[] chevron = _credentialListCollapsed
+                ? new[] { new Point(6, 7), new Point(12, 14), new Point(6, 21) }
+                : new[] { new Point(12, 7), new Point(6, 14), new Point(12, 21) };
+            e.Graphics.DrawLines(pen, chevron);
         }
 
         private void RenderCredentialWorkspace()

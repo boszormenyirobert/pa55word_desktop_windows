@@ -135,6 +135,35 @@ namespace TrayApp
             }
         }
 
+        protected override void WndProc(ref Message message)
+        {
+            const int WmNcHitTest = 0x0084;
+            const int HtClient = 1;
+            const int HtLeft = 10;
+            const int HtRight = 11;
+            const int HtTop = 12;
+            const int HtTopLeft = 13;
+            const int HtTopRight = 14;
+            const int HtBottom = 15;
+            const int HtBottomLeft = 16;
+            const int HtBottomRight = 17;
+
+            base.WndProc(ref message);
+
+            if (message.Msg != WmNcHitTest)
+            {
+                return;
+            }
+
+            message.Result = message.Result.ToInt32() switch
+            {
+                HtLeft or HtRight => (IntPtr)HtClient,
+                HtTopLeft or HtTopRight => (IntPtr)HtTop,
+                HtBottomLeft or HtBottomRight => (IntPtr)HtBottom,
+                _ => message.Result
+            };
+        }
+
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);

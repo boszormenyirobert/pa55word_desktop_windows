@@ -335,6 +335,26 @@ public sealed class MainWindowPresentationTests
     }
 
     [Fact]
+    public void Configure_RestoresTheRequiredFixedWidth()
+    {
+        RunOnStaThread(() =>
+        {
+            using var window = new Form();
+            MainWindowPresentation.Configure(window);
+
+            window.MinimumSize = Size.Empty;
+            window.MaximumSize = Size.Empty;
+            window.ClientSize = new Size(1200, 800);
+            MainWindowPresentation.Configure(window);
+
+            Assert.Equal(MainWindowPresentation.MinimumClientSize.Width, window.ClientSize.Width);
+            Assert.Equal(window.Size.Width, window.MinimumSize.Width);
+            Assert.Equal(window.Size.Width, window.MaximumSize.Width);
+            Assert.Equal(800, window.ClientSize.Height);
+        });
+    }
+
+    [Fact]
     public void HideAndReopen_PreservesContentAndWindowSize()
     {
         RunOnStaThread(() =>
