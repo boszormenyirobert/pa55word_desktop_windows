@@ -12,7 +12,7 @@ namespace TrayApp.TrayMenu
         private const int DwmUseImmersiveDarkMode = 20;
         private const int DwmCaptionColor = 35;
         private const int DwmTextColor = 36;
-        private const string WindowTitle = "pa55word INVICTUS MANEO I Remain Unconquered";
+        private const string WindowTitle = "pa55word It just feels right | Effortless by Design";
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(
@@ -84,19 +84,23 @@ namespace TrayApp.TrayMenu
 
         public static void Configure(Form window, bool showCredentialList = false)
         {
-            int minimumWidth = MinimumClientSize.Width +
-                (showCredentialList ? CredentialListPanel.PanelWidth : 0);
-            Size minimumSize = new(
-                minimumWidth + window.Width - window.ClientSize.Width,
-                MinimumClientSize.Height + window.Height - window.ClientSize.Height);
-            Size clientSize = new(
-                Math.Max(window.ClientSize.Width, minimumWidth),
-                Math.Max(window.ClientSize.Height, MinimumClientSize.Height));
-
             if (window.FormBorderStyle != FormBorderStyle.Sizable)
             {
                 window.FormBorderStyle = FormBorderStyle.Sizable;
             }
+
+            Size boundsSize = window.WindowState == FormWindowState.Minimized
+                ? window.RestoreBounds.Size
+                : window.Size;
+            int nonClientWidth = boundsSize.Width - window.ClientSize.Width;
+            int minimumWidth = MinimumClientSize.Width +
+                (showCredentialList ? CredentialListPanel.PanelWidth : 0);
+            Size minimumSize = new(
+                minimumWidth + nonClientWidth,
+                MinimumClientSize.Height + boundsSize.Height - window.ClientSize.Height);
+            Size clientSize = new(
+                Math.Max(window.ClientSize.Width, minimumWidth),
+                Math.Max(window.ClientSize.Height, MinimumClientSize.Height));
 
             if (window.MaximizeBox)
             {
@@ -108,6 +112,11 @@ namespace TrayApp.TrayMenu
                 window.MinimizeBox = true;
             }
 
+            if (!window.MaximumSize.IsEmpty)
+            {
+                window.MaximumSize = Size.Empty;
+            }
+
             if (window.MinimumSize != minimumSize)
             {
                 window.MinimumSize = minimumSize;
@@ -116,6 +125,12 @@ namespace TrayApp.TrayMenu
             if (window.ClientSize != clientSize)
             {
                 window.ClientSize = clientSize;
+            }
+
+            Size maximumSize = new(clientSize.Width + nonClientWidth, int.MaxValue);
+            if (window.MaximumSize != maximumSize)
+            {
+                window.MaximumSize = maximumSize;
             }
 
             if (!window.ShowInTaskbar)
@@ -156,6 +171,7 @@ namespace TrayApp.TrayMenu
         {
             window.WindowState = FormWindowState.Normal;
             window.MinimumSize = Size.Empty;
+            window.MaximumSize = Size.Empty;
             window.ClientSize = new Size(800, 450);
             window.FormBorderStyle = FormBorderStyle.FixedSingle;
             window.MaximizeBox = false;

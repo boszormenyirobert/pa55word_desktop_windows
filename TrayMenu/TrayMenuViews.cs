@@ -34,6 +34,13 @@ namespace TrayApp.TrayMenu
                     Description = "Review the guidance before replacing or deleting a device.",
                     SelectionLayout = TrayMenuSelectionLayout.HomeSummary
                 },
+                TrayMenuSection.Recovery => new TrayMenuViewState
+                {
+                    Eyebrow = "SETTINGS",
+                    Title = "Recovery",
+                    Description = "Select a profile to recover access using this desktop and a new mobile phone.",
+                    SelectionLayout = TrayMenuSelectionLayout.None
+                },
                 TrayMenuSection.Accounts => new TrayMenuViewState
                 {
                     Eyebrow = "ACCOUNTS",

@@ -59,6 +59,16 @@ namespace TrayApp
         private readonly Label _quickPanelSettingsProfileLink = new();
         private readonly Label _quickPanelSettingsServersLink = new();
         private readonly Label _quickPanelSettingsDevicesLink = new();
+        private readonly Label _quickPanelSettingsRecoveryLink = new();
+        private readonly Panel _quickPanelRecoveryPanel = new();
+        private readonly Label _quickPanelRecoveryProfileLabel = new();
+        private readonly TrayDropdown _quickPanelRecoveryProfileComboBox = new();
+        private readonly RichTextBox _quickPanelRecoveryDescriptionBox = new();
+        private readonly Label _quickPanelRecoveryStatusLabel = new();
+        private readonly Button _quickPanelRecoveryOpenButton = new();
+        private RecoveryControl? _recoveryControl;
+        private bool _updatingRecoveryProfiles;
+        private string _selectedRecoveryProfileUserId = string.Empty;
         private readonly Panel _quickPanelAccountRenamePanel = new();
         private readonly TextBox _quickPanelAccountNameTextBox = new();
         private readonly Button _quickPanelAccountRenameSubmitButton = new();
@@ -719,13 +729,16 @@ namespace TrayApp
             ConfigureSettingsOverviewLink(_quickPanelSettingsProfileLink, "Profile", TrayMenuSection.SettingsUsers);
             ConfigureSettingsOverviewLink(_quickPanelSettingsServersLink, "Manage Databases", TrayMenuSection.SettingsServers);
             ConfigureSettingsOverviewLink(_quickPanelSettingsDevicesLink, "Devices", TrayMenuSection.Devices);
+            ConfigureSettingsOverviewLink(_quickPanelSettingsRecoveryLink, "Recovery", TrayMenuSection.Recovery);
 
             _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsOverviewLink);
             _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsProfileLink);
             _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsServersLink);
             _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsDevicesLink);
+            _quickPanelSettingsNavigationPanel.Controls.Add(_quickPanelSettingsRecoveryLink);
 
             InitializeAccountRenameControls();
+            InitializeRecoveryPanel();
 
             _quickPanelSettingsDescriptionBox.BackColor = Color.FromArgb(31, 33, 57);
             _quickPanelSettingsDescriptionBox.BorderStyle = BorderStyle.None;
@@ -740,6 +753,58 @@ namespace TrayApp
 
             _quickPanelSettingsOverviewPanel.Controls.Add(_quickPanelSettingsNavigationPanel);
             _quickPanelSettingsOverviewPanel.Controls.Add(_quickPanelSettingsDescriptionBox);
+            _quickPanelSettingsOverviewPanel.Controls.Add(_quickPanelRecoveryPanel);
+        }
+
+        private void InitializeRecoveryPanel()
+        {
+            _quickPanelRecoveryPanel.BackColor = Color.Transparent;
+            _quickPanelRecoveryPanel.Location = new Point(0, 38);
+            _quickPanelRecoveryPanel.Size = new Size(578, 352);
+            _quickPanelRecoveryPanel.Visible = false;
+
+            _quickPanelRecoveryProfileLabel.AutoSize = true;
+            _quickPanelRecoveryProfileLabel.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
+            _quickPanelRecoveryProfileLabel.ForeColor = Color.FromArgb(171, 174, 211);
+            _quickPanelRecoveryProfileLabel.Location = new Point(0, 0);
+            _quickPanelRecoveryProfileLabel.Text = "Select profile";
+
+            ConfigureTrayComboBox(_quickPanelRecoveryProfileComboBox, 9.5F, Color.FromArgb(31, 33, 57));
+            _quickPanelRecoveryProfileComboBox.Location = new Point(0, 24);
+            _quickPanelRecoveryProfileComboBox.Size = new Size(544, 25);
+            _quickPanelRecoveryProfileComboBox.SelectedIndexChanged += RecoveryProfileComboBox_SelectedIndexChanged;
+
+            _quickPanelRecoveryStatusLabel.AutoSize = false;
+            _quickPanelRecoveryStatusLabel.Font = new Font("Segoe UI", 9F);
+            _quickPanelRecoveryStatusLabel.ForeColor = Color.FromArgb(220, 222, 241);
+            _quickPanelRecoveryStatusLabel.Location = new Point(0, 58);
+            _quickPanelRecoveryStatusLabel.Size = new Size(544, 36);
+            _quickPanelRecoveryStatusLabel.Visible = false;
+
+            ConfigureQuickPanelButton(_quickPanelRecoveryOpenButton, Color.FromArgb(46, 48, 77), Color.White);
+            _quickPanelRecoveryOpenButton.Text = "Open recovery";
+            _quickPanelRecoveryOpenButton.Location = new Point(0, 58);
+            _quickPanelRecoveryOpenButton.Size = new Size(180, 32);
+            _quickPanelRecoveryOpenButton.Visible = false;
+            _quickPanelRecoveryOpenButton.Click += OpenRecovery;
+
+            _quickPanelRecoveryDescriptionBox.BackColor = Color.FromArgb(31, 33, 57);
+            _quickPanelRecoveryDescriptionBox.BorderStyle = BorderStyle.None;
+            _quickPanelRecoveryDescriptionBox.Cursor = Cursors.Default;
+            _quickPanelRecoveryDescriptionBox.Font = new Font("Segoe UI", 9.5F);
+            _quickPanelRecoveryDescriptionBox.ForeColor = Color.FromArgb(220, 222, 241);
+            _quickPanelRecoveryDescriptionBox.Location = new Point(0, 100);
+            _quickPanelRecoveryDescriptionBox.ReadOnly = true;
+            _quickPanelRecoveryDescriptionBox.ScrollBars = RichTextBoxScrollBars.Vertical;
+            _quickPanelRecoveryDescriptionBox.Size = new Size(578, 252);
+            _quickPanelRecoveryDescriptionBox.TabStop = false;
+            _quickPanelRecoveryDescriptionBox.Visible = false;
+
+            _quickPanelRecoveryPanel.Controls.Add(_quickPanelRecoveryProfileLabel);
+            _quickPanelRecoveryPanel.Controls.Add(_quickPanelRecoveryProfileComboBox);
+            _quickPanelRecoveryPanel.Controls.Add(_quickPanelRecoveryStatusLabel);
+            _quickPanelRecoveryPanel.Controls.Add(_quickPanelRecoveryDescriptionBox);
+            _quickPanelRecoveryPanel.Controls.Add(_quickPanelRecoveryOpenButton);
         }
 
         private void ConfigureSettingsOverviewLink(Label label, string text, TrayMenuSection section)
@@ -777,6 +842,11 @@ namespace TrayApp
 
         private async Task NavigateFromSettingsOverviewAsync(TrayMenuSection section)
         {
+            if (section == TrayMenuSection.Recovery && _authenticationService.IsAuthorized)
+            {
+                return;
+            }
+
             if (RequiresSettingsAuthentication(section) && !_authenticationService.IsAuthorized)
             {
                 ShowSettingsAccessMessage("Log in to access Servers, Devices, and Account settings.");
@@ -786,6 +856,11 @@ namespace TrayApp
             if (section != TrayMenuSection.Devices)
             {
                 _settingsAccessMessage = string.Empty;
+                if (section == TrayMenuSection.Recovery)
+                {
+                    PopulateRecoveryProfiles();
+                }
+
                 _trayMenuController?.SetActiveSection(section, triggerStateChanged: true);
                 return;
             }
@@ -801,6 +876,133 @@ namespace TrayApp
                 TrayMenuSection.Devices or
                 TrayMenuSection.Accounts;
         }
+
+        private void PopulateRecoveryProfiles()
+        {
+            string previouslySelectedUserId = _selectedRecoveryProfileUserId;
+            _updatingRecoveryProfiles = true;
+
+            try
+            {
+                _quickPanelRecoveryProfileComboBox.Items.Clear();
+                _quickPanelRecoveryProfileComboBox.Items.Add(new SelectionOption("Select profile", string.Empty));
+                _quickPanelRecoveryStatusLabel.Text = string.Empty;
+                _quickPanelRecoveryStatusLabel.Visible = false;
+
+                if (!_registeredDeviceService.TryReadRegistrations(out IReadOnlyList<DesktopRegistration>? registrations) ||
+                    registrations == null)
+                {
+                    _quickPanelRecoveryStatusLabel.Text = "Unable to load registered profiles on this desktop.";
+                    _quickPanelRecoveryStatusLabel.Visible = true;
+                }
+                else
+                {
+                    foreach (DesktopRegistration registration in registrations)
+                    {
+                        _quickPanelRecoveryProfileComboBox.Items.Add(
+                            new SelectionOption(registration.DisplayUserName, registration.UserKey));
+                    }
+
+                    if (registrations.Count == 0)
+                    {
+                        _quickPanelRecoveryStatusLabel.Text = "No profiles are registered on this desktop.";
+                        _quickPanelRecoveryStatusLabel.Visible = true;
+                    }
+                }
+
+                _quickPanelRecoveryProfileComboBox.Enabled = _quickPanelRecoveryProfileComboBox.Items.Count > 1;
+                int selectedIndex = 0;
+                for (int index = 1; index < _quickPanelRecoveryProfileComboBox.Items.Count; index++)
+                {
+                    if (_quickPanelRecoveryProfileComboBox.Items[index] is SelectionOption option &&
+                        string.Equals(option.Value, previouslySelectedUserId, StringComparison.Ordinal))
+                    {
+                        selectedIndex = index;
+                        break;
+                    }
+                }
+
+                _quickPanelRecoveryProfileComboBox.SetSelectedIndexSilently(selectedIndex);
+                _selectedRecoveryProfileUserId =
+                    _quickPanelRecoveryProfileComboBox.Items[selectedIndex] is SelectionOption selectedOption
+                        ? selectedOption.Value
+                        : string.Empty;
+                UpdateRecoveryDescription();
+            }
+            finally
+            {
+                _updatingRecoveryProfiles = false;
+            }
+        }
+
+        private void RecoveryProfileComboBox_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_updatingRecoveryProfiles)
+            {
+                return;
+            }
+
+            _selectedRecoveryProfileUserId =
+                _quickPanelRecoveryProfileComboBox.SelectedItem is SelectionOption option
+                    ? option.Value
+                    : string.Empty;
+            UpdateRecoveryDescription();
+        }
+
+        private void UpdateRecoveryDescription()
+        {
+            CloseRecoveryCard();
+            bool profileSelected = !string.IsNullOrWhiteSpace(_selectedRecoveryProfileUserId);
+            _quickPanelRecoveryOpenButton.Visible = profileSelected;
+            _quickPanelRecoveryDescriptionBox.Visible = profileSelected;
+            _quickPanelRecoveryStatusLabel.Visible =
+                !profileSelected && !string.IsNullOrWhiteSpace(_quickPanelRecoveryStatusLabel.Text);
+            _quickPanelRecoveryDescriptionBox.Text = profileSelected
+                ? "Use recovery when your registered mobile phone has been damaged or lost. Open recovery, choose the registered server, then enter the 12-digit code sent to the account's email address. On the new mobile phone, choose Recovery proces and scan the QR. Enter the separate code displayed on that phone here, then transfer the encrypted key. Recovery is complete only after the phone confirms activation. The existing desktop key and encrypted DEK must still be available."
+                : string.Empty;
+        }
+
+        private void OpenRecovery(object? sender, EventArgs e)
+        {
+            if (_authenticationService.IsAuthorized || string.IsNullOrWhiteSpace(_selectedRecoveryProfileUserId))
+                return;
+            try
+            {
+                var registration = new RegistrationConfigStore().ReadRegistration(_selectedRecoveryProfileUserId);
+                if (!string.Equals(registration.UserKey, _selectedRecoveryProfileUserId, StringComparison.Ordinal))
+                    throw new InvalidDataException("The selected profile is no longer registered.");
+                ShowRecoveryCard(new RecoveryControl(registration));
+            }
+            catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                _quickPanelRecoveryStatusLabel.Text = "The selected profile's recovery configuration could not be loaded. Check its database registration and local file permissions.";
+                _quickPanelRecoveryStatusLabel.Visible = true;
+                _quickPanelRecoveryOpenButton.Visible = false;
+            }
+        }
+
+        private void ShowRecoveryCard(RecoveryControl recovery)
+        {
+            CloseRecoveryCard();
+            _recoveryControl = recovery;
+            recovery.Dock = DockStyle.Fill;
+            _quickPanelRecoveryProfileComboBox.Enabled = false;
+            _quickPanelRecoveryOpenButton.Enabled = false;
+            recovery.BackRequested += (_, _) => CloseRecoveryCard();
+            _quickPanelRecoveryPanel.Controls.Add(recovery);
+            recovery.BringToFront();
+        }
+
+        private void CloseRecoveryCard()
+        {
+            if (_recoveryControl == null) return;
+            _quickPanelRecoveryPanel.Controls.Remove(_recoveryControl);
+            _recoveryControl.Dispose();
+            _recoveryControl = null;
+            _quickPanelRecoveryProfileComboBox.Enabled = true;
+            _quickPanelRecoveryOpenButton.Enabled = true;
+        }
+
 
         private void ShowSettingsAccessMessage(string message)
         {
@@ -1305,7 +1507,7 @@ namespace TrayApp
         private void LayoutSettingsOverview()
         {
             const int bottomMargin = 15;
-            if (_trayMenuController?.ActiveSection != TrayMenuSection.Settings)
+            if (_trayMenuController?.ActiveSection is not (TrayMenuSection.Settings or TrayMenuSection.Recovery))
             {
                 _quickPanelSettingsOverviewPanel.Height = _quickPanelSettingsNavigationPanel.Height;
                 return;
@@ -1317,6 +1519,9 @@ namespace TrayApp
 
             _quickPanelSettingsOverviewPanel.Height = overviewHeight;
             _quickPanelSettingsDescriptionBox.Height = overviewHeight - _quickPanelSettingsDescriptionBox.Top;
+            _quickPanelRecoveryPanel.Height = overviewHeight - _quickPanelRecoveryPanel.Top;
+            _quickPanelRecoveryDescriptionBox.Height =
+                _quickPanelRecoveryPanel.Height - _quickPanelRecoveryDescriptionBox.Top;
         }
 
         private void SetRegistrationControlsVisible(bool visible)
@@ -1470,6 +1675,13 @@ namespace TrayApp
             if (!_isDeviceRegistered)
             {
                 return;
+            }
+
+            if (_trayMenuController?.ActiveSection == TrayMenuSection.Recovery &&
+                _authenticationService.IsAuthorized)
+            {
+                _selectedRecoveryProfileUserId = string.Empty;
+                _trayMenuController.SetActiveSection(TrayMenuSection.Settings);
             }
 
             _quickPanelContainer.SuspendLayout();
@@ -1801,12 +2013,15 @@ namespace TrayApp
                 TrayMenuSection.SettingsUsers or
                 TrayMenuSection.SettingsServers or
                 TrayMenuSection.Devices or
+                TrayMenuSection.Recovery or
                 TrayMenuSection.Accounts;
             bool settingsOverviewActive = activeSection == TrayMenuSection.Settings;
+            bool recoveryActive = activeSection == TrayMenuSection.Recovery;
 
             _quickPanelSettingsOverviewPanel.Visible = settingsNavigationActive;
             _quickPanelSettingsDescriptionBox.Visible = settingsOverviewActive;
-            _quickPanelDetailDescriptionLabel.Visible = !settingsOverviewActive;
+            _quickPanelRecoveryPanel.Visible = recoveryActive;
+            _quickPanelDetailDescriptionLabel.Visible = !settingsOverviewActive && !recoveryActive;
 
             if (!settingsNavigationActive)
             {
@@ -1817,12 +2032,17 @@ namespace TrayApp
             UpdateSettingsOverviewLinkState(_quickPanelSettingsProfileLink, TrayMenuSection.SettingsUsers);
             UpdateSettingsOverviewLinkState(_quickPanelSettingsServersLink, TrayMenuSection.SettingsServers);
             UpdateSettingsOverviewLinkState(_quickPanelSettingsDevicesLink, TrayMenuSection.Devices);
+            UpdateSettingsOverviewLinkState(_quickPanelSettingsRecoveryLink, TrayMenuSection.Recovery);
 
-            if (settingsOverviewActive)
+            if (settingsOverviewActive || recoveryActive)
             {
                 _quickPanelSelectionCard.Visible = false;
                 _quickPanelMetricsCard.Visible = false;
                 _quickPanelInsightCard.Visible = false;
+            }
+
+            if (settingsOverviewActive)
+            {
                 _quickPanelSettingsDescriptionBox.Text =
                     (string.IsNullOrWhiteSpace(_settingsAccessMessage)
                         ? string.Empty
@@ -1830,8 +2050,9 @@ namespace TrayApp
                     $"{viewState.Description}\n\n" +
                     "Overview provides a summary of the available settings.\n\n" +
                     "Profile: manage the active profile and related actions.\n\n" +
-                    "Servers: add, synchronize, and manage server connections.\n\n" +
-                    "Devices: review and manage registered account devices.";
+                    "Manage Databases: add, synchronize, and manage database connections.\n\n" +
+                    "Devices: review and manage registered account devices.\n\n" +
+                    "Recovery: learn how to restore credential access when you no longer have your registered mobile phone.";
             }
             else if (activeSection is TrayMenuSection.SettingsUsers or TrayMenuSection.SettingsServers)
             {
@@ -1860,13 +2081,16 @@ namespace TrayApp
 
         private void UpdateSettingsOverviewLinkState(Label label, TrayMenuSection section)
         {
-            bool available = !RequiresSettingsAuthentication(section) || _authenticationService.IsAuthorized;
+            bool available = section == TrayMenuSection.Recovery
+                ? !_authenticationService.IsAuthorized
+                : !RequiresSettingsAuthentication(section) || _authenticationService.IsAuthorized;
             label.ForeColor = !available
                 ? Color.FromArgb(119, 122, 151)
                 : _trayMenuController?.ActiveSection == section
                     ? Color.FromArgb(120, 205, 0)
                     : Color.White;
             label.Cursor = available ? Cursors.Hand : Cursors.Default;
+            label.Enabled = section != TrayMenuSection.Recovery || available;
         }
 
         private void ApplyLoginProfileSelectionAvailability(TrayMenuViewState viewState)
@@ -2246,7 +2470,11 @@ namespace TrayApp
                 }
 
                 List<NamespaceItemDto> authorizedNamespaces = registration.Namespaces
-                    .Where(namespaceItem => _authorizationSessionStore.HasActiveSessionForNamespace(registration.UserKey, namespaceItem.NamespaceId))
+                    .Where(namespaceItem => _authorizationSessionStore.Matches(
+                        registration.UserKey,
+                        namespaceItem.AccountId,
+                        namespaceItem.DesktopDeviceId,
+                        namespaceItem.Url))
                     .ToList();
 
                 if (authorizedNamespaces.Count == 0)

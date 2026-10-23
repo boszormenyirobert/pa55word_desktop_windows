@@ -7,6 +7,7 @@ namespace TrayApp.TrayMenu
         SettingsUsers,
         SettingsServers,
         Devices,
+        Recovery,
         Accounts,
         Servers,
         Credentials,

@@ -11,6 +11,111 @@ namespace TrayApp.Tests;
 public sealed class MainWindowPresentationTests
 {
     [Fact]
+    public void Recovery_ContentRemainsInsideSettingsContainerAfterNavigationAndResize()
+    {
+        RunOnStaThread(() =>
+        {
+            var form = (Form1)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Form1));
+            using var detail = new Panel { Size = new Size(643, 600) };
+            using var settings = new Panel { Location = new Point(32, 152), Size = new Size(578, 390) };
+            using var navigation = new FlowLayoutPanel { Height = 20 };
+            using var settingsDescription = new RichTextBox { Top = 38 };
+            using var recovery = new Panel();
+            using var profileLabel = new Label();
+            using var profiles = new TrayDropdown();
+            using var description = new RichTextBox();
+            using var status = new Label();
+            using var open = new Button();
+            var controller = new TrayMenuController((_, _) => { }, () => { });
+            void Set(string field, object value) => typeof(Form1)
+                .GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .SetValue(form, value);
+            void Invoke(string method) => typeof(Form1)
+                .GetMethod(method, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(form, null);
+
+            Set("_quickPanelDetailPanel", detail);
+            Set("_quickPanelSettingsOverviewPanel", settings);
+            Set("_quickPanelSettingsNavigationPanel", navigation);
+            Set("_quickPanelSettingsDescriptionBox", settingsDescription);
+            Set("_quickPanelRecoveryPanel", recovery);
+            Set("_quickPanelRecoveryProfileLabel", profileLabel);
+            Set("_quickPanelRecoveryProfileComboBox", profiles);
+            Set("_quickPanelRecoveryDescriptionBox", description);
+            Set("_quickPanelRecoveryStatusLabel", status);
+            Set("_quickPanelRecoveryOpenButton", open);
+            Set("_selectedRecoveryProfileUserId", string.Empty);
+            Set("_trayMenuController", controller);
+            detail.Controls.Add(settings);
+            settings.Controls.Add(navigation);
+            settings.Controls.Add(settingsDescription);
+            settings.Controls.Add(recovery);
+            Invoke("InitializeRecoveryPanel");
+
+            controller.SetActiveSection(TrayMenuSection.SettingsUsers);
+            Invoke("LayoutSettingsOverview");
+            Assert.Equal(navigation.Height, settings.Height);
+
+            controller.SetActiveSection(TrayMenuSection.Recovery);
+            recovery.Visible = true;
+            Invoke("LayoutSettingsOverview");
+            Assert.True(profiles.Visible);
+            Assert.False(description.Visible);
+            Assert.True(settings.ClientRectangle.Contains(recovery.Bounds));
+            Assert.True(recovery.ClientRectangle.Contains(profiles.Bounds));
+
+            Type optionType = typeof(Form1).GetNestedType("SelectionOption",
+                System.Reflection.BindingFlags.NonPublic)!;
+            profiles.Items.Add(Activator.CreateInstance(optionType, "Alice", "alice")!);
+            profiles.SelectedIndex = 0;
+            Assert.True(description.Visible);
+            Assert.True(open.Visible);
+            Assert.Equal("Open recovery", open.Text);
+            Assert.Contains("damaged or lost", description.Text);
+            Assert.Contains("email address", description.Text);
+            Assert.Contains("new mobile phone", description.Text);
+
+            foreach (int height in new[] { 720, 440 })
+            {
+                detail.Height = height;
+                Invoke("LayoutSettingsOverview");
+                Assert.Equal(height - settings.Top - 15, settings.Height);
+                Assert.True(settings.ClientRectangle.Contains(recovery.Bounds));
+                Assert.True(recovery.ClientRectangle.Contains(profiles.Bounds));
+                Assert.True(recovery.ClientRectangle.Contains(open.Bounds));
+                Assert.True(recovery.ClientRectangle.Contains(description.Bounds));
+                Assert.Equal(recovery.Height, description.Bottom);
+            }
+
+            using var card = new RecoveryControl(new TrayApp.Models.DesktopRegistration());
+            typeof(Form1).GetMethod("ShowRecoveryCard",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(form, new object[] { card });
+            Assert.Same(recovery, card.Parent);
+            Assert.Equal(DockStyle.Fill, card.Dock);
+            Assert.IsNotAssignableFrom<Form>(card);
+            Assert.False(profiles.Enabled);
+            Assert.False(open.Enabled);
+            foreach (int height in new[] { 720, 440 })
+            {
+                detail.Height = height;
+                Invoke("LayoutSettingsOverview");
+                recovery.PerformLayout();
+                Assert.Equal(recovery.ClientRectangle, card.Bounds);
+            }
+            var back = card.Controls.Find("RecoveryBack", true).Single();
+            typeof(Control).GetMethod("OnClick",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(back, new object[] { EventArgs.Empty });
+            Assert.True(card.IsDisposed);
+            Assert.DoesNotContain(card, recovery.Controls.Cast<Control>());
+            Assert.True(open.Visible);
+            Assert.True(profiles.Enabled);
+            Assert.True(open.Enabled);
+        });
+    }
+
+    [Fact]
     public void Brand_ClickOpensWebsiteUsingDefaultBrowser()
     {
         RunOnStaThread(() =>
@@ -156,7 +261,7 @@ public sealed class MainWindowPresentationTests
             Assert.Equal(list.Right, details.Left);
             Assert.True(details.Width >= 643);
 
-            window.ClientSize = new Size(1200, 900);
+            window.ClientSize = new Size(window.ClientSize.Width, 900);
             window.PerformLayout();
             content.PerformLayout();
             Assert.Equal(900 - WindowHeader.HeaderHeight, list.Height);
@@ -203,7 +308,7 @@ public sealed class MainWindowPresentationTests
             Assert.Equal(new[] { "Minimize", "Close" },
                 header.Controls.OfType<Button>().Select(button => button.AccessibleName));
             Assert.Contains(header.Controls.OfType<Label>(),
-                label => label.Text == "INVICTUS MANEO I Remain Unconquered" &&
+                label => label.Text == "It just feels right | Effortless by Design" &&
                     label.ForeColor == Color.FromArgb(247, 248, 250));
             var separator = Assert.Single(header.Controls.OfType<Panel>());
             Assert.Equal(Color.White, separator.BackColor);
@@ -212,17 +317,20 @@ public sealed class MainWindowPresentationTests
             Assert.False(window.MaximizeBox);
             Assert.True(window.MinimizeBox);
             Assert.True(window.ShowInTaskbar);
-            Assert.Equal("pa55word INVICTUS MANEO I Remain Unconquered", window.Text);
+            Assert.Equal("pa55word It just feels right | Effortless by Design", window.Text);
             Assert.NotNull(window.Icon);
+            Assert.Equal(window.Size.Width, window.MaximumSize.Width);
+            Assert.Equal(int.MaxValue, window.MaximumSize.Height);
             Assert.True(window.ClientSize.Width >= MainWindowPresentation.MinimumClientSize.Width);
             Assert.True(window.ClientSize.Height >= MainWindowPresentation.MinimumClientSize.Height);
 
-            window.ClientSize = new Size(1000, 800);
+            int fixedWidth = window.ClientSize.Width;
+            window.ClientSize = new Size(fixedWidth, 800);
             window.PerformLayout();
 
-            Assert.Equal(new Size(1000, 800 - WindowHeader.HeaderHeight), content.Size);
+            Assert.Equal(new Size(fixedWidth, 800 - WindowHeader.HeaderHeight), content.Size);
             MainWindowPresentation.Configure(window);
-            Assert.Equal(new Size(1000, 800), window.ClientSize);
+            Assert.Equal(new Size(fixedWidth, 800), window.ClientSize);
         });
     }
 
@@ -237,7 +345,8 @@ public sealed class MainWindowPresentationTests
             content.Controls.Add(input);
             MainWindowPresentation.AttachContent(window, content);
             MainWindowPresentation.Configure(window);
-            window.ClientSize = new Size(1000, 800);
+            int fixedWidth = window.ClientSize.Width;
+            window.ClientSize = new Size(fixedWidth, 800);
             MainWindowPresentation.Show(window);
 
             MainWindowPresentation.Hide(window);
@@ -250,7 +359,7 @@ public sealed class MainWindowPresentationTests
 
             Assert.True(window.Visible);
             Assert.True(window.ShowInTaskbar);
-            Assert.Equal(new Size(1000, 800), window.ClientSize);
+            Assert.Equal(new Size(fixedWidth, 800), window.ClientSize);
             Assert.Equal("unsaved value", input.Text);
         });
     }
@@ -271,8 +380,9 @@ public sealed class MainWindowPresentationTests
             Assert.Equal(new Size(800, 450), window.ClientSize);
             Assert.Equal(FormBorderStyle.FixedSingle, window.FormBorderStyle);
             Assert.False(window.MaximizeBox);
+            Assert.Equal(Size.Empty, window.MaximumSize);
             Assert.True(window.ShowInTaskbar);
-            Assert.Equal("pa55word INVICTUS MANEO I Remain Unconquered Registration", window.Text);
+            Assert.Equal("pa55word It just feels right | Effortless by Design Registration", window.Text);
             Assert.NotNull(window.Icon);
 
             MainWindowPresentation.Configure(window);

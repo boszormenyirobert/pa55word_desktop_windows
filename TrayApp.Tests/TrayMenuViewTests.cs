@@ -61,6 +61,16 @@ public sealed class TrayMenuViewTests
     }
 
     [Fact]
+    public void RecoveryView_PromptsForProfileSelection()
+    {
+        TrayMenuViewState viewState = TrayMenuViews.Build(TrayMenuSection.Recovery, new TrayMenuContext());
+
+        Assert.Equal("Recovery", viewState.Title);
+        Assert.Equal("Select a profile to recover access using this desktop and a new mobile phone.", viewState.Description);
+        Assert.Equal(TrayMenuSelectionLayout.None, viewState.SelectionLayout);
+    }
+
+    [Fact]
     public void UnknownSection_PreservesLoginFallback()
     {
         TrayMenuViewState viewState = TrayMenuViews.Build(
@@ -75,9 +85,10 @@ public sealed class TrayMenuViewTests
     [Theory]
     [InlineData((int)TrayMenuSection.Settings, "Settings", (int)TrayMenuSelectionLayout.None)]
     [InlineData((int)TrayMenuSection.SettingsUsers, "Profile", (int)TrayMenuSelectionLayout.SettingsUserActions)]
-    [InlineData((int)TrayMenuSection.SettingsServers, "Servers", (int)TrayMenuSelectionLayout.SettingsServerActions)]
-    [InlineData((int)TrayMenuSection.Servers, "Servers", (int)TrayMenuSelectionLayout.SettingsServerActions)]
+    [InlineData((int)TrayMenuSection.SettingsServers, "Manage Databases", (int)TrayMenuSelectionLayout.SettingsServerActions)]
+    [InlineData((int)TrayMenuSection.Servers, "Manage Databases", (int)TrayMenuSelectionLayout.SettingsServerActions)]
     [InlineData((int)TrayMenuSection.Devices, "Registered devices for the user profile: Alice", (int)TrayMenuSelectionLayout.HomeSummary)]
+    [InlineData((int)TrayMenuSection.Recovery, "Recovery", (int)TrayMenuSelectionLayout.None)]
     [InlineData((int)TrayMenuSection.Accounts, "User account", (int)TrayMenuSelectionLayout.HomeSummary)]
     [InlineData((int)TrayMenuSection.Faq, "Help and FAQ", (int)TrayMenuSelectionLayout.HomeSummary)]
     public void StaticSections_PreserveTitlesLayoutsAndEmptyInsights(

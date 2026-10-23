@@ -22,6 +22,38 @@ namespace TrayApp.Services
             };
         }
 
+        internal HttpApiClient(HttpClient httpClient)
+        {
+            _httpClient = httpClient;
+        }
+
+        internal async Task<TResponse> PostSensitiveJsonAsync<TResponse>(
+            string endpoint,
+            string json,
+            IReadOnlyDictionary<string, string> headers,
+            CancellationToken cancellationToken)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            AddHeaders(request, headers);
+            // Recovery bodies and responses contain codes, public keys and encrypted DEKs.
+            // Do not use the ordinary payload/header diagnostic logging for this transport.
+            using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                TimeSpan? retryAfter = response.Headers.RetryAfter?.Delta;
+                if (retryAfter == null && response.Headers.RetryAfter?.Date is DateTimeOffset date)
+                    retryAfter = date - DateTimeOffset.UtcNow;
+                throw new ApiRequestException(HttpMethod.Post, endpoint, response.StatusCode, body, retryAfter);
+            }
+
+            return JsonSerializer.Deserialize<TResponse>(body, ResponseJsonOptions)
+                ?? throw new InvalidDataException("The recovery server returned an empty response.");
+        }
+
 
         public async Task ConnectToSseEndpoint(
             string endpoint,

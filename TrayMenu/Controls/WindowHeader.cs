@@ -75,8 +75,8 @@ namespace TrayApp.TrayMenu.Controls
         public void Configure(bool registration)
         {
             _description.Text = registration
-                ? "INVICTUS MANEO I Remain Unconquered Registration"
-                : "INVICTUS MANEO I Remain Unconquered";
+                ? "It just feels right | Effortless by Design Registration"
+                : "It just feels right | Effortless by Design";
             _minimize.Enabled = _window.MinimizeBox;
             LayoutButtons();
         }

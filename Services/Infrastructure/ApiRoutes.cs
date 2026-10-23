@@ -9,6 +9,13 @@ namespace TrayApp.Services
         public const string Account = "account";
         public const string AccountStatus = "account/status";
         public const string AccountDevices = "account/devices";
+        public const string Recovery = "recovery";
+        public const string RecoveryConfirmation = "recovery/confirmation";
+        public const string RecoveryResend = "recovery/resend";
+        public const string RecoveryStatus = "recovery/status";
+        public const string RecoveryPairing = "recovery/pairing";
+        public const string RecoveryDek = "recovery/dek";
+        public const string RecoveryCancellation = "recovery/cancellation";
         public const string CredentialStore = "credential-store";
         public const string CredentialStoreAll = "credential-store/all";
         public const string CredentialStoreGroup = "credential-store/group";

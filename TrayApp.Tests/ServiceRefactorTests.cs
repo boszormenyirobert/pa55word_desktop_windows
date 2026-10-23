@@ -152,6 +152,32 @@ public sealed class ServiceRefactorTests
         Assert.Null(await SendAsync(CreateApi(httpClient), verb));
     }
 
+    [Fact]
+    public async Task AccountDeviceDeletion_NoContentResponse_IsSuccessful()
+    {
+        using var handler = new StubHttpHandler(HttpStatusCode.NoContent, string.Empty);
+        using var httpClient = new HttpClient(handler);
+        var service = new AccountDeviceService(CreateApi(httpClient), null!);
+        string desktopDeviceId = $"test-device-{Guid.NewGuid():N}";
+        var pki = new Pki();
+        pki.CreatePrivateKey("KeyContainer_" + desktopDeviceId);
+
+        try
+        {
+            await service.DeleteDeviceAsync(
+                new AccountDeviceDto { MobileDeviceId = "mobile-device" },
+                "https://example.test",
+                "account",
+                desktopDeviceId);
+
+            Assert.Equal("DELETE", handler.Method);
+        }
+        finally
+        {
+            pki.DeletePrivateKey("KeyContainer_" + desktopDeviceId);
+        }
+    }
+
     [Theory]
     [InlineData("POST")]
     [InlineData("PUT")]

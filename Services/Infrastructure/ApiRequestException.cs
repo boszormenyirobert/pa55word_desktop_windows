@@ -8,12 +8,14 @@ namespace TrayApp.Services
             HttpMethod method,
             string endpoint,
             HttpStatusCode statusCode,
-            string responseBody)
+            string responseBody,
+            TimeSpan? retryAfter = null)
             : base($"{method} {endpoint} failed with {(int)statusCode} ({statusCode}). Body: {responseBody}", inner: null, statusCode)
         {
             Method = method;
             Endpoint = endpoint;
             ResponseBody = responseBody;
+            RetryAfter = retryAfter;
         }
 
         public HttpMethod Method { get; }
@@ -21,5 +23,6 @@ namespace TrayApp.Services
         public string Endpoint { get; }
 
         public string ResponseBody { get; }
+        public TimeSpan? RetryAfter { get; }
     }
 }

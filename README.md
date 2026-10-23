@@ -1,4 +1,7 @@
-
+PS CLI
+Set-Location "C:\Users\boszo\source\repos\TrayApp"
+dotnet clean .\TrayApp.sln
+dotnet build .\TrayApp.sln
 
 
 dotnet clean
@@ -29,6 +32,18 @@ Instructions on how to install and set up the project.
 How to use the project, including examples and code snippets.
 
 The desktop always opens on startup: Bootstrap registration for an unregistered desktop, Login without an active session for the selected database, or Credentials with an active saved session. Network checks run after the window opens. This also applies to browser-extension launches; the legacy `--start-in-tray` argument no longer hides the window.
+
+## Desktop recovery
+
+- Open **Settings -> Recovery**, select a profile and choose **Open recovery**. The entire flow stays inside the existing Settings card, without a separate window or popup. Select the profile's registered database, then start recovery.
+- Enter the 12-digit email code on the desktop. Only after confirmation is the recovery QR displayed.
+- On the new mobile installation, use **Recovery proces**, scan the QR and approve the server. Enter the separate 12-digit pairing code shown by the mobile on the desktop.
+- Check the selected phone and key fingerprint, then explicitly transfer the existing DEK. The desktop uses its existing TPM key and re-encrypts the original 32-byte DEK for the mobile using RSA-OAEP SHA-1. Signing remains RSA-SHA1 / PKCS#1 v1.5.
+- `dek_ready` means waiting for the mobile; success is shown only after the mobile completes activation. Status refreshes every five seconds while the recovery card is visible.
+- Leaving the card or choosing **Back to profiles** does not cancel recovery. Reopen it for the same profile/database to resume; use Cancel and its inline confirmation to cancel on the server. Errors and results also appear inside the card. Polling pauses while the card is hidden. Uncertain requests require explicit retry with their saved request ID and payload, not a new start or automatic email resend. Email resend has a 60-second cooldown.
+- Resumable state, including any pending codes/ciphertext, is protected with Windows DPAPI CurrentUser under `%LOCALAPPDATA%\TrayApp\recovery`. Recovery HTTP calls do not use payload/header/body diagnostic logging.
+- HTTP and HTTPS server origins are accepted for development. **HTTP must be disabled in production; production recovery must use HTTPS.** Redirects and URLs containing credentials, paths, queries or fragments are rejected. HTTP exposes codes and other recovery data to the network.
+- The backend recovery migration must be deployed, and the mobile recovery client must be implemented for a live end-to-end recovery.
 
 ## Implementation structure
 
