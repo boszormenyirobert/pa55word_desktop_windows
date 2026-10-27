@@ -28,10 +28,16 @@ public sealed class AccountRenameTests
                 using var fixture = new RenameFixture();
                 var form = (Form1)RuntimeHelpers.GetUninitializedObject(typeof(Form1));
                 using var detail = new Panel();
-                using var actions = new TrayDropdown();
-                using var renamePanel = new Panel();
-                using var name = new TextBox();
-                using var submit = new Button();
+                using var profile = new ProfileControl();
+                using var databases = new ManageDatabasesControl();
+                using var devices = new DevicesControl();
+                detail.Controls.Add(profile);
+                detail.Controls.Add(databases);
+                detail.Controls.Add(devices);
+                TrayDropdown actions = profile.ActionComboBox;
+                Panel renamePanel = profile.RenamePanel;
+                TextBox name = profile.NameTextBox;
+                Button submit = profile.RenameSubmitButton;
                 using var accounts = new FlowLayoutPanel();
                 using var guidance = new Panel();
                 using var description = new Label();
@@ -45,12 +51,9 @@ public sealed class AccountRenameTests
                 void Invoke(string method) => typeof(Form1)
                     .GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(form, null);
                 Set("_quickPanelDetailPanel", detail);
-                Set("_quickPanelSettingsUserActionComboBox", actions);
-                Set("_quickPanelAccountRenamePanel", renamePanel);
-                Set("_quickPanelAccountNameTextBox", name);
-                Set("_quickPanelAccountRenameSubmitButton", submit);
-                Set("_quickPanelAccountsPanel", accounts);
-                Set("_quickPanelAccountsGuidancePanel", guidance);
+                Set("_profileView", profile);
+                Set("_databaseView", databases);
+                Set("_devicesView", devices);
                 Set("_quickPanelDetailDescriptionLabel", description);
                 Set("_quickPanelSelectionCard", selection);
                 Set("_quickPanelMetricsCard", metrics);
@@ -61,20 +64,46 @@ public sealed class AccountRenameTests
                 Set("_accountRenameUserId", "owner");
 
                 Invoke("InitializeAccountRenameControls");
-                Invoke("UpdateAccountRenamePresentation");
+                Invoke("UpdateSettingsViewsPresentation");
                 Assert.Contains(name, renamePanel.Controls.Cast<Control>());
                 Assert.Contains(submit, renamePanel.Controls.Cast<Control>());
                 Assert.False(submit.Enabled);
 
                 fixture.SignIn("owner");
                 Invoke("PopulateSettingsUserActions");
-                Invoke("UpdateAccountRenamePresentation");
+                Invoke("UpdateSettingsViewsPresentation");
                 Assert.Contains("Rename profile", actions.Items.Cast<object>().Select(item => item.ToString()));
                 Assert.True(submit.Enabled);
                 Assert.True(renamePanel.Visible);
+                Assert.False(selection.Visible);
+
+                controller.SetActiveSection(TrayMenuSection.SettingsServers);
+                Invoke("UpdateSettingsViewsPresentation");
+                Assert.False(profile.Visible);
+                Assert.True(databases.ActionPanel.Visible);
+                Assert.False(databases.RegistrationPanel.Visible);
+
+                Set("_showInlineServerRegistration", true);
+                controller.SetActiveSection(TrayMenuSection.Servers);
+                Invoke("UpdateSettingsViewsPresentation");
+                Assert.True(databases.RegistrationPanel.Visible);
+                Assert.False(databases.ActionPanel.Visible);
+
+                controller.SetActiveSection(TrayMenuSection.Devices);
+                Invoke("UpdateSettingsViewsPresentation");
+                Assert.True(devices.Visible);
+                Assert.False(databases.Visible);
+                Assert.False(profile.Visible);
+
                 controller.SetActiveSection(TrayMenuSection.Accounts);
-                Invoke("UpdateAccountRenamePresentation");
+                Invoke("UpdateSettingsViewsPresentation");
                 Assert.False(renamePanel.Visible);
+                Assert.False(databases.Visible);
+                Assert.False(devices.Visible);
+
+                controller.SetActiveSection(TrayMenuSection.SettingsUsers);
+                Invoke("UpdateSettingsViewsPresentation");
+                Assert.True(renamePanel.Visible);
             }
             catch (Exception exception)
             {

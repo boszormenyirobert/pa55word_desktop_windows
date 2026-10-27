@@ -5,7 +5,20 @@ using TrayApp.Models;
 
 namespace TrayApp.Services
 {
-    internal sealed class CredentialCollectionService
+    internal interface ICredentialCollectionService
+    {
+        Task<IReadOnlyList<CredentialGroupDto>> ReadGroupsAsync();
+        Task<IReadOnlyList<CredentialEntryListItem>> ReadEntriesAsync();
+        CredentialEntryDetail ReadEntryDetail(CredentialEntryListItem item);
+        Task<CredentialEntryListItem?> CreateEntryAsync(CredentialEntryDraft draft);
+        Task<CredentialEntryListItem?> UpdateEntryAsync(CredentialEntryDraft draft);
+        Task DeleteEntryAsync(int credentialId);
+        Task<CredentialGroupDto?> CreateGroupAsync(string groupName, string? groupId = null);
+        Task<CredentialGroupDto?> UpdateGroupAsync(string groupId, string groupName);
+        Task<CredentialGroupDto?> DeleteGroupAsync(string groupId);
+    }
+
+    internal sealed class CredentialCollectionService : ICredentialCollectionService
     {
         private const string TrayDeviceName = "ZeroIntrusion Tray";
         private readonly RegisteredDeviceService _registeredDeviceService;

@@ -9,6 +9,7 @@ using System.Windows.Forms;
 using TrayApp.Models;
 using TrayApp.Services;
 using TrayApp.TrayMenu;
+using TrayApp.TrayMenu.Controls;
 
 namespace TrayApp
 {
@@ -27,7 +28,7 @@ namespace TrayApp
         private readonly RegisteredDeviceService _registeredDeviceService = new RegisteredDeviceService();
         private readonly HttpApiClient _httpApiClient = new HttpApiClient();
         private readonly AccountLifecycleService _accountLifecycleService;
-        private readonly AccountDeviceService _accountDeviceService;
+        private readonly IAccountDeviceService _accountDeviceService;
         private readonly AuthorizationSessionStore _authorizationSessionStore = new AuthorizationSessionStore();
         private readonly ExtensionSessionStateStore _extensionSessionStateStore = new ExtensionSessionStateStore();
         private readonly AuthenticationService _authenticationService;
@@ -76,12 +77,16 @@ namespace TrayApp
             _extensionSessionStateStore.StateChanged += HandleExtensionSessionStateChanged;
             _authenticationService.DeviceRegistrationRemoved += HandleDeviceRegistrationRemoved;
 
-            _credentialCollectionService = new CredentialCollectionService(
+            var credentialCollectionService = new CredentialCollectionService(
                 _registeredDeviceService,
                 _httpApiClient,
                 _authenticationService,
                 _extensionSessionStateStore,
                 message => Debug.WriteLine(message));
+
+            _credentialsPresenter = new TrayMenu.Presenters.CredentialsPresenter(
+                credentialCollectionService, BuildCredentialCollectionCacheKey);
+            _credentialsPresenter.StateChanged += HandleCredentialsStateChanged;
 
             var commandHandler = new BrowserCommandHandler(
                 _registeredDeviceService,
@@ -297,8 +302,8 @@ namespace TrayApp
             {
                 _inlineUserRegistrationSubmitting = false;
                 _inlineUserRegistrationAwaitingCompletion = false;
-                _quickPanelUserRegistrationSubmitButton.Enabled = true;
-                _quickPanelUserRegistrationStatusLabel.Text = message;
+                _profileView.RegistrationSubmitButton.Enabled = true;
+                _profileView.RegistrationStatusLabel.Text = message;
                 UpdateQuickPanelState();
                 return;
             }
@@ -612,13 +617,7 @@ namespace TrayApp
                 return;
             }
 
-            _credentialGroups = Array.Empty<CredentialGroupDto>();
-            _credentialEntries = Array.Empty<CredentialEntryListItem>();
-            _credentialEntryDetails.Clear();
-            _selectedCredentialGroupId = string.Empty;
-            _selectedCredentialEntryId = string.Empty;
-            _credentialCollectionCacheKey = string.Empty;
-            _credentialCollectionLoaded = false;
+            _credentialsPresenter.Reset();
             _credentialSelectorsFingerprint = string.Empty;
             _lastTrayMessage = AuthenticationService.DeviceRemovedMessage;
             _lastTrayMessageIcon = ToolTipIcon.Warning;
@@ -649,28 +648,8 @@ namespace TrayApp
 
         private void UpdateAuthenticationMenuItems()
         {
-            bool showAuthenticationActions = _isDeviceRegistered;
-            bool isAuthorized = _authenticationService.IsAuthorized;
-            bool canLogout = showAuthenticationActions && isAuthorized;
-
-            _quickPanelPrimaryActionButton.Text = canLogout ? "Logout" : "Login";
-            _quickPanelPrimaryActionButton.Visible = canLogout;
-            _quickPanelPrimaryActionButton.Enabled = canLogout && !_authenticationInProgress;
-            _quickPanelRefreshButton.Enabled = showAuthenticationActions && !_quickPanelRefreshInProgress;
-            SetQuickPanelLoginNavigationEnabled(true);
-
-            if (canLogout && !_authenticationInProgress)
-            {
-                _quickPanelPrimaryActionButton.BackColor = Color.FromArgb(214, 88, 88);
-                _quickPanelPrimaryActionButton.ForeColor = Color.White;
-                _quickPanelPrimaryActionButton.FlatAppearance.BorderColor = Color.FromArgb(214, 88, 88);
-            }
-            else
-            {
-                _quickPanelPrimaryActionButton.BackColor = Color.FromArgb(46, 48, 77);
-                _quickPanelPrimaryActionButton.ForeColor = Color.White;
-                _quickPanelPrimaryActionButton.FlatAppearance.BorderColor = Color.FromArgb(46, 48, 77);
-            }
+            _sidebar.ApplyActions(new SidebarActionState(_isDeviceRegistered, _authenticationService.IsAuthorized,
+                _authenticationInProgress, _quickPanelRefreshInProgress));
         }
 
 

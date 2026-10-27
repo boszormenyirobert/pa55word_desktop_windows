@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Compile Remove="TrayApp.Tests\**\*.cs" />
+    <Compile Remove="Form1.TrayMenu.cs" />
   </ItemGroup>
 
   <ItemGroup>

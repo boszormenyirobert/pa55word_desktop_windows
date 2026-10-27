@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using TrayApp.Services;
@@ -9,7 +10,13 @@ namespace TrayApp.TrayMenu
     internal static class MainWindowPresentation
     {
         internal static readonly Size MinimumClientSize = new(820, 660 + WindowHeader.HeaderHeight);
-        private const int InitialClientHeight = 700;
+        private static readonly ConditionalWeakTable<Form, WindowLayout> WindowLayouts = new();
+
+        private sealed class WindowLayout
+        {
+            public bool ShowCredentialList { get; set; }
+        }
+
         private const int DwmUseImmersiveDarkMode = 20;
         private const int DwmCaptionColor = 35;
         private const int DwmTextColor = 36;
@@ -85,24 +92,26 @@ namespace TrayApp.TrayMenu
 
         public static void Configure(Form window, bool showCredentialList = false)
         {
+            WindowLayouts.GetOrCreateValue(window).ShowCredentialList = showCredentialList;
+            if (window.WindowState == FormWindowState.Minimized)
+            {
+                return;
+            }
+
             if (window.FormBorderStyle != FormBorderStyle.Sizable)
             {
                 window.FormBorderStyle = FormBorderStyle.Sizable;
             }
 
-            Size boundsSize = window.WindowState == FormWindowState.Minimized
-                ? window.RestoreBounds.Size
-                : window.Size;
-            int nonClientWidth = boundsSize.Width - window.ClientSize.Width;
+            Size frameSize = window.Size - window.ClientSize;
             int minimumWidth = MinimumClientSize.Width +
                 (showCredentialList ? CredentialListPanel.PanelWidth : 0);
             Size minimumSize = new(
-                minimumWidth + nonClientWidth,
-                MinimumClientSize.Height + boundsSize.Height - window.ClientSize.Height);
-            int clientHeight = window.WindowState == FormWindowState.Minimized
-                ? Math.Max(MinimumClientSize.Height, InitialClientHeight)
-                : Math.Max(window.ClientSize.Height, MinimumClientSize.Height);
-            Size clientSize = new(minimumWidth, clientHeight);
+                minimumWidth + frameSize.Width,
+                MinimumClientSize.Height + frameSize.Height);
+            int currentClientHeight = window.ClientSize.Height;
+            Size windowSize = new(minimumSize.Width,
+                Math.Max(currentClientHeight, MinimumClientSize.Height) + frameSize.Height);
 
             if (window.MaximizeBox)
             {
@@ -124,9 +133,9 @@ namespace TrayApp.TrayMenu
                 window.MaximumSize = Size.Empty;
             }
 
-            if (window.ClientSize != clientSize)
+            if (window.Size != windowSize)
             {
-                window.ClientSize = clientSize;
+                window.Size = windowSize;
             }
 
             if (window.MinimumSize != minimumSize)
@@ -134,7 +143,7 @@ namespace TrayApp.TrayMenu
                 window.MinimumSize = minimumSize;
             }
 
-            Size maximumSize = new(clientSize.Width + nonClientWidth, int.MaxValue);
+            Size maximumSize = new(windowSize.Width, int.MaxValue);
             if (window.MaximumSize != maximumSize)
             {
                 window.MaximumSize = maximumSize;
@@ -150,7 +159,6 @@ namespace TrayApp.TrayMenu
 
         public static void Show(Form window)
         {
-            window.Opacity = 1;
             window.ShowInTaskbar = true;
             if (window.WindowState == FormWindowState.Minimized)
             {
@@ -164,6 +172,12 @@ namespace TrayApp.TrayMenu
                 window.WindowState = FormWindowState.Normal;
             }
 
+            if (WindowLayouts.TryGetValue(window, out WindowLayout? layout))
+            {
+                Configure(window, layout.ShowCredentialList);
+            }
+
+            window.Opacity = 1;
             window.BringToFront();
             window.Activate();
         }
@@ -176,6 +190,7 @@ namespace TrayApp.TrayMenu
 
         public static void ConfigureRegistration(Form window)
         {
+            WindowLayouts.Remove(window);
             window.WindowState = FormWindowState.Normal;
             window.MinimumSize = Size.Empty;
             window.MaximumSize = Size.Empty;

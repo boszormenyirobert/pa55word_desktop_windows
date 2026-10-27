@@ -1,10 +1,12 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
+using System.Windows.Forms;
 using TrayApp.Models;
 using TrayApp.Services;
 using TrayApp.TrayMenu;
 using TrayApp.TrayMenu.Controls;
+using TrayApp.TrayMenu.Presenters;
 using Xunit;
 
 namespace TrayApp.Tests;
@@ -21,13 +23,14 @@ public sealed class TrayMenuSelectionTests
         {
             using var selectors = new SelectorFixture();
             selectors.Controller.SetActiveSection(TrayMenuSection.Credentials);
-            SetField(selectors.Form, "_selectedCredentialGroupId", groupId);
-            SetField(selectors.Form, "_selectedCredentialEntryId", "7");
-            SetField(selectors.Form, "_credentialEntries", new[]
+            selectors.Presenter.SelectedGroupId = groupId;
+            selectors.Presenter.SelectedEntryId = "7";
+            selectors.Service.Entries = new[]
             {
                 new CredentialEntryListItem(7, "Example entry",
                     groupId == "__ungrouped__" ? "" : "work", "Work", "", "", "")
-            });
+            };
+            selectors.Presenter.LoadAsync(forceRefresh: true).GetAwaiter().GetResult();
             Invoke(selectors.Form, "PopulateCredentialSelectors");
 
             Invoke(selectors.Form, "RefreshQuickPanelSelections");
@@ -50,7 +53,10 @@ public sealed class TrayMenuSelectionTests
 
             selectors.Controller.SetActiveSection(TrayMenuSection.Login);
             Invoke(selectors.Form, "RefreshQuickPanelSelections");
-            Assert.Empty(selectors.Groups.Items);
+            Assert.Empty(selectors.Login.ProfileSelector.Items);
+            Assert.Empty(selectors.Login.ServerSelector.Items);
+            Assert.Equal(new[] { "All groups", "Ungrouped", "Work" },
+                selectors.Groups.Items.Cast<object>().Select(item => item.ToString()));
 
             selectors.Controller.SetActiveSection(TrayMenuSection.Credentials);
             Invoke(selectors.Form, "RefreshQuickPanelSelections");
@@ -61,14 +67,60 @@ public sealed class TrayMenuSelectionTests
         });
     }
 
+    [Fact]
+    public void WorkspaceSaveClick_InvokesPresenterCommand()
+    {
+        RunOnStaThread(() =>
+        {
+            using var selectors = new SelectorFixture();
+            Invoke(selectors.Form, "InitializeCredentialWorkspacePanel");
+            selectors.Presenter.WorkspaceMode = CredentialWorkspaceMode.CreateEntry;
+            selectors.Workspace.LabelTextBox.Text = "Created through the view";
+
+            typeof(Button).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(selectors.Workspace.SaveButton, new object[] { EventArgs.Empty });
+
+            Assert.Equal(1, selectors.Service.SaveCount);
+            Assert.Equal("9", selectors.Presenter.SelectedEntryId);
+            Assert.Contains(selectors.Presenter.Entries, entry => entry.Label == "Created through the view");
+        });
+    }
+
+    [Fact]
+    public void CredentialGroupChange_UsesItsOwnSelectorAndResetsEntry()
+    {
+        RunOnStaThread(() =>
+        {
+            using var selectors = new SelectorFixture();
+            Invoke(selectors.Form, "InitializeCredentialWorkspacePanel");
+            Invoke(selectors.Form, "PopulateCredentialSelectors");
+            selectors.Presenter.SelectedEntryId = "7";
+            SetField(selectors.Form, "_isDeviceRegistered", false);
+
+            selectors.Groups.SelectedIndex = 2;
+
+            Assert.Equal("work", selectors.Presenter.SelectedGroupId);
+            Assert.Empty(selectors.Presenter.SelectedEntryId);
+            Assert.Empty(selectors.Login.ProfileSelector.Items);
+            Assert.Empty(selectors.Login.ServerSelector.Items);
+        });
+    }
+
     private sealed class SelectorFixture : IDisposable
     {
         private readonly string _configPath = Path.GetTempFileName();
         public Form1 Form { get; }
         public TrayMenuController Controller { get; } = new((_, _) => { }, () => { });
-        public TrayDropdown Groups { get; } = new();
-        public TrayDropdown Entries { get; } = new();
-        private TrayDropdown AssignedGroup { get; } = new();
+        private CredentialSelectionControl Selection { get; } = new();
+        public TrayDropdown Groups => Selection.GroupSelector;
+        public TrayDropdown Entries => Selection.EntrySelector;
+        public LoginControl Login { get; } = new();
+        public CredentialWorkspaceControl Workspace { get; } = new();
+        public FakeCredentialCollectionService Service { get; } = new()
+        {
+            Entries = Array.Empty<CredentialEntryListItem>()
+        };
+        public CredentialsPresenter Presenter { get; }
 
         public SelectorFixture()
         {
@@ -82,21 +134,19 @@ public sealed class TrayMenuSelectionTests
             SetField(Form, "_registeredDeviceService", service);
             SetField(Form, "_isDeviceRegistered", true);
             SetField(Form, "_trayMenuController", Controller);
-            SetField(Form, "_quickPanelUserComboBox", Groups);
-            SetField(Form, "_quickPanelNamespaceComboBox", Entries);
-            SetField(Form, "_quickPanelCredentialAssignedGroupComboBox", AssignedGroup);
-            SetField(Form, "_credentialGroups", new[]
-            {
-                new CredentialGroupDto { GroupId = "work", GroupName = "Work" }
-            });
-            SetField(Form, "_credentialEntries", Array.Empty<CredentialEntryListItem>());
+            SetField(Form, "_loginView", Login);
+            SetField(Form, "_credentialSelection", Selection);
+            SetField(Form, "_credentialWorkspace", Workspace);
+            Presenter = new CredentialsPresenter(Service, () => "profile|database");
+            Presenter.LoadAsync().GetAwaiter().GetResult();
+            SetField(Form, "_credentialsPresenter", Presenter);
         }
 
         public void Dispose()
         {
-            Groups.Dispose();
-            Entries.Dispose();
-            AssignedGroup.Dispose();
+            Selection.Dispose();
+            Workspace.Dispose();
+            Login.Dispose();
             File.Delete(_configPath);
         }
     }

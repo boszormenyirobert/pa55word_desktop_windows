@@ -52,10 +52,50 @@ The desktop always opens on startup: Bootstrap registration for an unregistered 
 - The custom dark navy window header displays a clickable logo with white lettering and a green outlined-circle "55", followed by light `INVICTUS MANEO I Remain Unconquered` text (with ` Registration` during registration), without a separate leading "55" icon. It supports dragging and only minimize/close buttons while keeping the native resize frame. Maximization is disabled. A thin white horizontal rule separates the header from the main content.
 - Taskbar titles use `pa55word INVICTUS MANEO I Remain Unconquered`. The executable and taskbar retain the transparent outlined-circle "55" icon in `Assets/pa55word.ico`, with sizes from 16 to 256 pixels.
 - `TrayMenu/TrayMenuViews.cs` builds view state directly from a small `TrayMenuContext`. There is no per-view interface or runtime registry.
+- `CredentialWorkspaceControl` owns credential and group editor controls, action presentation, and vertical editor layout. `CredentialsPresenter` owns credential collections, selection, detail caching, loading, validation, and entry/group save/delete workflows. It depends on `ICredentialCollectionService`, not WinForms controls. The form reads editor input, forwards commands, and refreshes the UI when the presenter raises `StateChanged`.
+- Credential loading and commands discard results when the active profile/database changes or the collection is invalidated. Collection reloads after successful mutations run inside the command, so the busy flag does not block the reload.
+- `LoginControl` owns its profile/server selectors and authentication action presentation. These selectors are independent of the credential selectors, so refreshing Login does not overwrite credential group or entry choices.
+- `CredentialSelectionControl` owns the group/entry selection bar and its editor-mode action layout. `SettingsControl` owns settings navigation, overview presentation, recovery entry controls, and their local layout. `AccountsControl` owns the subscription guidance and rows, forwarding typed removal requests without calling services.
+- `SidebarControl` owns sidebar construction, server rows, navigation styling, action presentation, and stacked layout. The form computes identity, availability, and authorization state and passes it to the control; navigation and service commands remain form-owned.
+- `ProfileControl` owns profile actions and the rename, registration, and deletion panels. `ManageDatabasesControl` owns database actions, registration guidance, and QR form presentation. `DevicesControl` owns the source selector, guidance, device rows, deletion confirmation controls, and vertical list layout.
+- Device rendering compares value snapshots, including deletion-context identifiers, before rebuilding rows. Actual updates dispose replaced rows, batch layout changes, and restore the scroll position.
+- Device loads capture the active profile and a request version. Only the latest valid load may apply results, errors, or clear the loading state; resetting device state invalidates pending loads. Deterministic STA tests cover overlapping requests, profile changes, and resets using `IAccountDeviceService` without live HTTP calls.
+- `Form1.UpdateSettingsViewsPresentation` applies the final activation of Profile, Manage Databases, and Devices after shared navigation updates. Authentication, registration polling, device loading, and account/profile deletion remain form-coordinated; credential commands are presenter-owned. Login profile/server selectors have separate handlers from credential group/entry selectors.
+- `FaqControl` owns FAQ loading, accordion rendering, and expanded-question state. `PanelCollapseIcon` owns the transparent collapse glyph and hover rendering.
+- `TrayControlStyle` provides shared input and action styling for credential, registration, and profile views. Keep visual configuration here rather than duplicating it in form event handlers.
 - Registration configuration and response parsing live in `RegistrationConfigStore`. `BootstrapRegistrationService` owns its QR service instead of using a global service locator.
 - Authentication, account devices, and credential services share `RequestSigner` and `ApiRoutes` directly.
 - The native host and named-pipe transport share the same framing implementation in `NativePipe`. `INativeMessageProcessor` remains the boundary between transport and request processing.
 - HTTP response parsing is shared across verbs. Local credential decryption is synchronous; backend requests remain asynchronous.
+
+### UI source layout
+
+```text
+TrayMenu/
+  Coordination/   Form1 partials grouped by responsibility
+  Presenters/     UI-independent credential state and workflows
+  Controls/
+    Common/       Shared dropdown, collapse icon, and control styling
+    Shell/        Sidebar, window header, and branding
+  Views/
+    Login/        Independent login selectors and action presentation
+    Credentials/  Credential list, selection bar, and editor workspace
+    Settings/     Settings container, profile, databases, accounts, devices
+    Help/         FAQ view
+    Recovery/     Recovery workflow view
+  FAQ/            FAQ content
+```
+
+Keep feature-specific controls with their view, and put only reusable UI elements in `Controls`. Existing namespaces are preserved independently of this folder grouping.
+
+`Coordination` contains parts of the same `Form1` class, not separate windows:
+
+- `Form1.TrayMenu.cs`: shared state-to-view pipeline and window activation.
+- `Composition`: main control tree and top-level wiring; `Presentation`: shared section visibility and buffered panel behavior; `Navigation`: section changes and access rules.
+- `Authentication`, `Bootstrap`, `Settings`, `Profile`, `Databases`, `Devices`, `Accounts`, `Recovery`, and `Faq`: the corresponding feature's form-side coordination, with its fields kept beside its handlers.
+- `Credentials`: presenter bridge and selector population; `CredentialsCommands`: UI event wiring and editor actions; `CredentialsPresentation`: editor/list layout and applying presenter data to controls.
+
+This is an incremental separation: only Credentials currently has an independent presenter. Other feature coordinators still share `Form1` state. Keep API calls out of view controls; do not treat splitting a partial class into more files as an ownership boundary.
 
 ## AI Implement�ci�s specifik�ci� � QR beolvas�s �s �j eszk�z regisztr�ci�
 

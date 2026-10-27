@@ -3,7 +3,14 @@ using TrayApp.Models;
 
 namespace TrayApp.Services
 {
-    internal sealed class AccountDeviceService
+    internal interface IAccountDeviceService
+    {
+        Task<IReadOnlyList<AccountDeviceDto>> ReadDevicesAsync(string baseUrl, string accountId, string desktopDeviceId);
+        Task DeleteDeviceAsync(AccountDeviceDto device, string baseUrl, string accountId,
+            string desktopDeviceId, bool removeLocalRegistrationOnDeviceNotFound = true);
+    }
+
+    internal sealed class AccountDeviceService : IAccountDeviceService
     {
         private readonly HttpApiClient _httpApiClient;
         private readonly AuthenticationService _authenticationService;

@@ -51,7 +51,14 @@ namespace TrayApp.TrayMenu.Controls
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true
             };
-            _minimize = CreateButton("_", "Minimize", () => window.WindowState = FormWindowState.Minimized);
+            _minimize = CreateButton(string.Empty, "Minimize", () => window.WindowState = FormWindowState.Minimized);
+            _minimize.Paint += (_, args) =>
+            {
+                using var pen = new Pen(_minimize.Enabled ? _minimize.ForeColor : SystemColors.GrayText);
+                int centerX = _minimize.ClientSize.Width / 2;
+                int centerY = _minimize.ClientSize.Height / 2;
+                args.Graphics.DrawLine(pen, centerX - 5, centerY, centerX + 5, centerY);
+            };
             _close = CreateButton("X", "Close", window.Close);
 
             Controls.Add(logo);

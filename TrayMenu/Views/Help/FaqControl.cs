@@ -2,41 +2,27 @@ using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 using TrayApp.Services;
-using TrayApp.TrayMenu;
 
-namespace TrayApp
+namespace TrayApp.TrayMenu.Controls
 {
-    public partial class Form1
+    internal sealed class FaqControl : UserControl
     {
         private readonly List<FaqEntry> _faqEntries = new();
         private string _expandedFaqQuestion = string.Empty;
 
-        private void InitializeFaqPanel()
+        public FaqControl()
         {
-            _quickPanelFaqPanel.AutoScroll = true;
-            _quickPanelFaqPanel.BackColor = Color.FromArgb(31, 33, 57);
-            _quickPanelFaqPanel.Location = new Point(32, 152);
-            _quickPanelFaqPanel.Size = new Size(578, 493);
-            _quickPanelFaqPanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            _quickPanelFaqPanel.Visible = false;
-        }
+            AutoScaleMode = AutoScaleMode.None;
+            AutoScroll = true;
+            BackColor = Color.FromArgb(31, 33, 57);
+            Location = new Point(32, 152);
+            Size = new Size(578, 493);
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            Visible = false;
+                }
 
-        private void UpdateFaqPresentation()
+        internal void RefreshContent()
         {
-            bool faqActive = _trayMenuController?.ActiveSection == TrayMenuSection.Faq;
-            _quickPanelFaqPanel.Visible = faqActive;
-
-            if (!faqActive)
-            {
-                return;
-            }
-
-            _quickPanelDetailTitleLabel.AutoSize = true;
-            _quickPanelDetailTitleLabel.Font = _quickPanelDetailDefaultTitleFont;
-            _quickPanelDetailDescriptionLabel.Size = new Size(574, 44);
-            _quickPanelSelectionCard.Visible = false;
-            _quickPanelMetricsCard.Visible = false;
-            _quickPanelInsightCard.Visible = false;
             LoadFaqEntries();
             RenderFaqEntries();
         }
@@ -100,8 +86,8 @@ namespace TrayApp
 
         private void RenderFaqEntries()
         {
-            _quickPanelFaqPanel.SuspendLayout();
-            _quickPanelFaqPanel.Controls.Clear();
+            SuspendLayout();
+            Controls.Clear();
 
             try
             {
@@ -111,15 +97,15 @@ namespace TrayApp
                     bool expanded = string.Equals(entry.Question, _expandedFaqQuestion, StringComparison.Ordinal);
                     Control item = CreateFaqAccordionItem(entry, expanded);
                     item.Location = new Point(0, top);
-                    _quickPanelFaqPanel.Controls.Add(item);
+                    Controls.Add(item);
                     top = item.Bottom + 8;
                 }
 
-                _quickPanelFaqPanel.AutoScrollMinSize = new Size(0, top);
+                AutoScrollMinSize = new Size(0, top);
             }
             finally
             {
-                _quickPanelFaqPanel.ResumeLayout(performLayout: true);
+                ResumeLayout(performLayout: true);
             }
         }
 
